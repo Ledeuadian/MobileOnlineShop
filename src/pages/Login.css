@@ -1,0 +1,223 @@
+.login-logo-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.login-logo-shadow {
+  width: 120px;
+  height: 28px;
+  background: radial-gradient(ellipse at center, #e0e0e0 60%, transparent 100%);
+  margin: -8px auto 0 auto;
+  border-radius: 50%;
+  position: relative;
+  top: -10px;
+  z-index: 0;
+}
+.login-form-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.signup-row {
+    color: #3880ff;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0;
+  font-size: 1rem;
+  color: #444;
+}
+.welcome-text {
+  margin: 32px 0 36px 0;
+  font-size: 1rem;
+  color: #555;
+  text-align: center;
+  font-family: inherit;
+}
+
+.register-button {
+  width: 100%;
+  background: #fff;
+  color: #444;
+  border: 3px solid #333;
+  border-radius: 24px;
+  font-size: 1.2rem;
+  font-family: inherit;
+  padding: 16px 0;
+  margin-top: 24px;
+  margin-bottom: 0;
+  font-weight: 400;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.register-button:hover {
+  border-color: #000;
+}
+
+.main-login {
+  margin-bottom: 0;
+}
+.social-icon-img {
+  width: 35px;
+  height: 35px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+.login-container {
+  max-width: 350px;
+  margin: 40px auto;
+  padding: 32px 24px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.login-input {
+  margin-bottom: 16px;
+  padding: 10px;
+  paddi
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 16px;
+}
+.login-button {
+  padding: 10px;
+  background: #3880ff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.login-image {
+  width: 220px;
+  height: auto;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-input {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #d1d1d1;
+  border-radius: 8px;
+  font-size: 15px;
+  background: #fafafa;
+}
+
+.forgot-password {
+  text-align: right;
+  margin-bottom: 18px;
+}
+.forgot-password-link {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.main-login {
+  width: 100%;
+  background: #2d6b6b;
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  font-size: 1.2rem;
+  font-family: inherit;
+  padding: 16px 0;
+  margin-top: 24px;
+  margin-bottom: 0;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(45,107,107,0.08);
+  transition: background 0.2s;
+}
+.main-login:hover {
+  background: #205050;
+}
+
+.register-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: -13%;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 18px 0 12px 0;
+}
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: #d1d1d1;
+  border: none;
+}
+.divider-text {
+  margin: 0 12px;
+  color: #666;
+  font-size: 14px;
+}
+
+.social-login {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+.social-btn {
+  width: 100px;
+  height: 70px;
+  border-radius: 18px;
+  border: 1px solid #bdbdbd;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.social-btn.twitter .icon {
+  font-family: 'FontAwesome', sans-serif;
+  font-style: normal;
+  font-weight: normal;
+}
+.social-btn:hover {
+  border-color: #888;
+  box-shadow: 2px 4px 16px rgba(45,107,107,0.18);
+}
+.signup-link {
+  margin-top: 18px;
+  font-size: 15px;
+}
+.register-link-button {
+  background: none;
+  border: none;
+  color: #000000a9;
+  text-decoration: none;
+  font-size: 17px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 5px;
+  font-weight: bold;
+}
+.login-link-button:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,140 @@
+.register-container {
+  max-width: 420px;
+  margin: 40px auto;
+  padding: 32px 24px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.register-form-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.register-image {
+  width: 110px;
+  height: auto;
+  border-radius: 8px;
+  margin-bottom: 0;
+}
+.register-logo-shadow {
+  width: 320px;
+  height: 28px;
+  background: radial-gradient(ellipse at center, #e0e0e0 60%, transparent 100%);
+  margin: -12px auto 0 auto;
+  border-radius: 50%;
+  position: relative;
+  top: -10px;
+  z-index: 0;
+}
+.register-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 32px;
+}
+.register-input {
+  margin-bottom: 9px;
+  padding: 12px 24px;
+  border: 2px solid #444;
+  border-radius: 24px;
+  font-size: 1rem;
+  background: #fff;
+  color: #444;
+}
+.register-button-main {
+  width: 100%;
+  background: #2d6b6b;
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  font-size: 1.5rem;
+  font-family: inherit;
+  padding: 18px 0;
+  margin-top: 0px;
+  margin-bottom: 0;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(45,107,107,0.08);
+  transition: background 0.2s;
+}
+.register-button-main:hover {
+  background: #205050;
+}
+.register-divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 32px 0 24px 0;
+}
+.register-divider-line {
+  flex: 1;
+  height: 3px;
+  background: #444;
+  border: none;
+}
+.register-divider-text {
+  margin: 0 18px;
+  color: #444;
+  font-size: 1.25rem;
+}
+.register-social-login {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin: 0 0 0 0;
+}
+.register-social-btn {
+  width: 120px;
+  height: 70px;
+  background: #fff;
+  border: 1px solid #bdbdbd;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.register-social-btn:hover {
+  border-color: #888;
+  box-shadow: 0 4px 16px rgba(45,107,107,0.18);
+}
+.register-social-icon-img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+.register-signup-link {
+  margin-top: 48px;
+  font-size: 1rem;
+  text-align: center;
+}
+.register-signup-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.register-signup-text {
+  color: #444;
+}
+.register-link-button {
+  background: none;
+  border: none;
+  color: #444;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+}
+.register-link-button:hover {
+  text-decoration: underline;
+}
