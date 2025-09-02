@@ -6,6 +6,12 @@ import { eye, eyeOff } from 'ionicons/icons';
 import { RegisterUser } from '../services/supabaseService';
 
 const Register: React.FC = () => {
+  const history = useHistory();
+  React.useEffect(() => {
+    if (localStorage.getItem('userEmail')) {
+      history.replace('/home');
+    }
+  }, [history]);
   const location = useLocation();
   const userType = (location.state as { userType?: string })?.userType;
   let userTypeCode: number | undefined;
@@ -19,7 +25,6 @@ const Register: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const history = useHistory();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

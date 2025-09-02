@@ -1,0 +1,100 @@
+.home-container {
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  padding: 32px 0 0 0;
+  box-shadow: none;
+  background: #fff;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.profile-menu-content {
+  padding: 24px;
+  background: #fff;
+  width: 100vw;
+  max-width: 100vw;
+}
+
+.profile-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.profile-menu-settings {
+  font-size: 28px;
+  color: #5a5a3c;
+}
+
+.profile-menu-title {
+  color: #5a5a3c;
+  font-weight: 700;
+  font-size: 2rem;
+  margin-bottom: 32px;
+}
+
+.profile-menu-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.profile-menu-icon {
+  font-size: 32px;
+  color: #5a5a3c;
+  margin-right: 16px;
+}
+
+.profile-menu-input {
+  font-size: 1.2rem;
+  color: #5a5a3c;
+  border: none;
+  background: transparent;
+}
+
+.profile-menu-divider {
+  border: 0.5px solid #5a5a3c;
+  margin: 8px 0 16px 0;
+}
+
+.bottom-bar {
+  width: 100%;
+  background: #fff;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 64px;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+}
+
+.bottom-bar-btn {
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+}
+
+.shop-btn {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+}
+
+.cart-btn {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.profile-btn {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}

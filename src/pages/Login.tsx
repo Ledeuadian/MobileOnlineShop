@@ -3,13 +3,19 @@ import { useHistory, useLocation } from 'react-router-dom';
 import { IonModal, IonButton, IonInput, IonIcon, IonItem } from '@ionic/react';
 import { eye, eyeOff } from 'ionicons/icons';
 import './Login.css';
-import { fetchAndLogUserTypes, testSupabaseConnection } from '../services/supabaseService';
+import { fetchAndLogUserTypes, testSupabaseConnection, supabase } from '../services/supabaseService';
 
 const Login: React.FC = () => {
+  const history = useHistory();
+  React.useEffect(() => {
+    if (localStorage.getItem('userEmail')) {
+      history.replace('/home');
+    }
+  }, [history]);
+  const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const history = useHistory();
   const location = useLocation();
   const [showLoginForm, setShowLoginForm] = useState(() => !!(location.state as { showLoginForm?: boolean })?.showLoginForm);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -74,19 +80,39 @@ const Login: React.FC = () => {
         </>
       ) : (
         <>
-          <form className="login-form">
+          <form className="login-form" onSubmit={async (e) => {
+            e.preventDefault();
+            setError(null);
+            // Authenticate with Supabase
+            try {
+              const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+              });
+              if (error) {
+                setError(error.message);
+                return;
+              }
+              // Redirect to Welcome page with email
+              localStorage.setItem('userEmail', email);
+              history.push({ pathname: '/home', state: { email } });
+            } catch (err: any) {
+              setError((err as Error).message || 'Login failed');
+            }
+            history.push({ pathname: '/home', state: { email } });
+          }}>
             <div className="login-form-logo">
               <img src="./public/images/GroSho.png" alt="GroSho Logo" className="login-image" />
             </div>
-              <IonItem className="login-input" style={{ background: '#fff', borderRadius: '8px', height: '48px', boxSizing: 'border-box', padding: '0 12px', marginBottom: '16px', border: '1px solid #ccc' }}>
-                <IonInput
-                  type="email"
-                  placeholder="Enter your email address"
-                  value={email}
-                  onIonInput={(e: CustomEvent) => setEmail((e.target as HTMLInputElement).value)}
-                  style={{ background: 'transparent', height: '100%', fontSize: '16px' }}
-                />
-              </IonItem>
+            <IonItem className="login-input" style={{ background: '#fff', borderRadius: '8px', height: '48px', boxSizing: 'border-box', padding: '0 12px', marginBottom: '16px', border: '1px solid #ccc' }}>
+              <IonInput
+                type="email"
+                placeholder="Enter your email address"
+                value={email}
+                onIonInput={(e: CustomEvent) => setEmail((e.target as HTMLInputElement).value)}
+                style={{ background: 'transparent', height: '100%', fontSize: '16px' }}
+              />
+            </IonItem>
             <IonItem className="login-input" style={{ background: 'transparent', borderRadius: '8px', height: '48px', boxSizing: 'border-box', padding: '0 12px', marginBottom: '16px', border: '1px solid #ccc' }}>
               <IonInput
                 type={showPassword ? "text" : "password"}
@@ -110,6 +136,7 @@ const Login: React.FC = () => {
               <button type="button" className="forgot-password-link">Forgot password?</button>
             </div>
             <button type="submit" className="login-button main-login">Login</button>
+            {error && <div style={{ color: 'red', marginTop: '12px' }}>{error}</div>}
           </form>
           <div className="divider">
             <hr className="divider-line" />
@@ -117,9 +144,43 @@ const Login: React.FC = () => {
             <hr className="divider-line" />
           </div>
           <div className="social-login">
-            <button type="button" className="social-btn">
-              <span className="icon"> <img src="./public/images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>
-            </button>
+              <button
+                type="button"
+                className="social-btn"
+                onClick={async () => {
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'facebook',
+                    options: {
+                      redirectTo: window.location.origin + '/home'
+                    }
+                  });
+                  if (error) {
+                    setError(error.message);
+                    return;
+                  }
+                  // After redirect, check session and create user in public.USER if needed
+                  setTimeout(async () => {
+                    const { data } = await supabase.auth.getSession();
+                    const userEmail = data?.session?.user?.email;
+                    if (userEmail) {
+                      // Check if user exists in public.USER
+                      const { data: userExists } = await supabase
+                        .from('USER')
+                        .select('email')
+                        .eq('email', userEmail)
+                        .maybeSingle();
+                      if (!userExists) {
+                        await supabase
+                          .from('USER')
+                          .insert([{ email: userEmail }]);
+                      }
+                      localStorage.setItem('userEmail', userEmail);
+                    }
+                  }, 1500);
+                }}
+              >
+                <span className="icon"> <img src="./public/images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>
+              </button>
             <button type="button" className="social-btn">
               <span className="icon"> <img src="./public/images/x.png" alt="X Logo" className="social-icon-img" /></span>
             </button>

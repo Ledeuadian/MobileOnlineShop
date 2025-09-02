@@ -1,0 +1,49 @@
+/* AccountConfirmation.css */
+
+.account-confirmation-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #fafafa;
+}
+
+.confirmation-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #fff;
+  padding: 32px 24px;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  min-width: 280px;
+}
+
+.confirmation-check {
+  color: #22c55e;
+  font-size: 64px;
+  margin-bottom: 24px;
+}
+
+.confirmation-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 8px;
+}
+
+.confirmation-message {
+  color: #555;
+  font-size: 1rem;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.confirmation-btn {
+  background: #0a36ff;
+  color: #fff;
+  font-weight: 500;
+  font-size: 1rem;
+  border-radius: 8px;
+  margin-top: 8px;
+}

@@ -1,3 +1,5 @@
+import Home from './pages/Home';
+import AccountConfirmation from './components/AccountConfirmation';
 import { Route } from 'react-router-dom';
 import {
   IonApp,
@@ -47,8 +49,12 @@ const App: React.FC = () => (
         <Route exact path="/login">
           <Login />
         </Route>
+        <Route exact path="/home" component={Home} />
         <Route exact path="/register">
           <Register />
+        </Route>
+        <Route exact path="/verified">
+          <AccountConfirmation />
         </Route>
       </IonRouterOutlet>
     </IonReactRouter>

@@ -1,0 +1,46 @@
+.profile-menu-content {
+  padding: 24px 16px;
+  background: #fff;
+}
+.profile-menu-title {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #75724c;
+  margin-bottom: 16px;
+}
+.profile-menu-icon {
+  font-size: 1.5rem;
+  color: #75724c;
+  margin-right: 12px;
+}
+.profile-menu-input {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  color: #75724c;
+  width: 100%;
+}
+.profile-menu-divider {
+  height: 1px;
+  background: #75724c;
+  margin: 8px 0 16px 0;
+  width: 100%;
+}
+.profile-menu-section {
+  position: relative;
+}
+.profile-menu-section::after {
+  content: "";
+  display: block;
+  height: 1px;
+  background: #75724c;
+  margin: 8px 0 16px 0;
+  width: 100%;
+}
+.profile-menu-close-btn {
+  color: #75724c;
+}
+.profile-menu-settings {
+  font-size: 1.5rem;
+  color: #75724c;
+}
