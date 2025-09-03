@@ -25,19 +25,45 @@ const Register: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return; // Prevent double submission
+    
+    setIsSubmitting(true);
     setError(null);
     setSuccess(null);
-  const result = await RegisterUser(email, password, confirmPassword, userTypeCode);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setSuccess('Registration successful! Please check your email to verify your account.');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
+    
+    // Validate required fields
+    if (!email.trim()) {
+      setError('Email required.');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!password.trim()) {
+      setError('Password required.');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!confirmPassword.trim()) {
+      setError('Confirm Password required.');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    try {
+      const result = await RegisterUser(email, password, confirmPassword, userTypeCode);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSuccess('Registration successful! Please check your email to verify your account.');
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -94,23 +120,12 @@ const Register: React.FC = () => {
             <IonIcon icon={showConfirmPassword ? eye : eyeOff} style={{ color: 'gray' }} />
           </IonButton>
         </IonItem>
-        <button type="submit" className="register-button-main">Register</button>
+        <button type="submit" className="register-button-main" disabled={isSubmitting}>
+          {isSubmitting ? 'Registering...' : 'Register'}
+        </button>
         {error && <div style={{ color: 'red', marginTop: '12px' }}>{error}</div>}
         {success && <div style={{ color: 'green', marginTop: '12px' }}>{success}</div>}
       </form>
-      <div className="register-divider">
-        <hr className="register-divider-line" />
-        <span className="register-divider-text">Or Register with</span>
-        <hr className="register-divider-line" />
-      </div>
-      <div className="register-social-login">
-        <button type="button" className="register-social-btn">
-          <span className="icon"> <img src="./public/images/fb.png" alt="Facebook Logo" className="register-social-icon-img" /></span>
-        </button>
-        <button type="button" className="register-social-btn">
-          <span className="icon"> <img src="./public/images/x.png" alt="X Logo" className="register-social-icon-img" /></span>
-        </button>
-      </div>
       <div className="register-signup-link">
         <div className="register-signup-row">
           <span className="register-signup-text">Already have an account?</span>

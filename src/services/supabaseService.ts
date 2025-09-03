@@ -48,6 +48,17 @@ export async function RegisterUser(email: string, password: string, confirmPassw
     return { error: 'Passwords do not match.' };
   }
 
+  // Check if email already exists in public.USER table
+  const { data: existingUser } = await supabase
+    .from('USER')
+    .select('email')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (existingUser) {
+    return { error: 'Email address is already registered. Please use a different email or try logging in.' };
+  }
+
   // Register user with Supabase Auth
   const { data, error } = await supabase.auth.signUp({
     email,

@@ -2,29 +2,60 @@ import React, { useEffect } from 'react';
 import { supabase } from '../services/supabaseService';
 import { IonPage } from '@ionic/react';
 import ProfileMenu from '../components/ProfileMenu';
-// ...existing code...
 import './Home.css';
 
 
 const Home: React.FC = () => {
   const [email, setEmail] = React.useState('');
+  const hasInsertedUser = React.useRef(false);
 
   useEffect(() => {
     const getSessionEmail = async () => {
       const { data, error } = await supabase.auth.getSession();
       if (data?.session?.user?.email) {
         setEmail(data.session.user.email);
-        console.log('Active session email:', data.session.user.email);
       } else {
         setEmail('');
-        console.log('No active session email found.');
       }
     };
     getSessionEmail();
   }, []);
 
   useEffect(() => {
-    console.log('Active session email:', email);
+    const insertUserIfNotExists = async () => {
+      if (!email || hasInsertedUser.current) 
+        return;
+      
+      // Check if user exists in public.USER
+      const { data: userExists } = await supabase
+        .from('USER')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+      if (!userExists) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const authUserId = sessionData?.session?.user?.id;
+        const { error } = await supabase
+          .from('USER')
+          .insert([{
+            email,
+            firstname: null,
+            lastname: null,
+            contactNumber: null,
+            userTypeCode: 4,
+            auth_user_id: authUserId
+          }]);
+        if (error) {
+          console.error('Supabase insert error:', error.message);
+        } else {
+          console.log('Inserted new user');
+          hasInsertedUser.current = true;
+        }
+      } else {
+        hasInsertedUser.current = true;
+      }
+    };
+    insertUserIfNotExists();
   }, [email]);
 
   return (

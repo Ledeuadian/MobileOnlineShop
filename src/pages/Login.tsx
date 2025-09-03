@@ -6,6 +6,7 @@ import './Login.css';
 import { fetchAndLogUserTypes, testSupabaseConnection, supabase } from '../services/supabaseService';
 
 const Login: React.FC = () => {
+  // ...existing code...
   const history = useHistory();
   React.useEffect(() => {
     if (localStorage.getItem('userEmail')) {
@@ -20,13 +21,35 @@ const Login: React.FC = () => {
   const [showLoginForm, setShowLoginForm] = useState(() => !!(location.state as { showLoginForm?: boolean })?.showLoginForm);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showRegisterNowModal, setShowRegisterNowModal] = useState(false);
+  // OAuth callback: after redirect to /home, check session and insert user if needed
+  useEffect(() => {
+    const checkOAuthUser = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userEmail = data?.session?.user?.email;
+      if (userEmail) {
+        // Check if user exists in public.USER
+        const { data: userExists } = await supabase
+          .from('USER')
+          .select('email')
+          .eq('email', userEmail)
+          .maybeSingle();
+        if (!userExists) {
+          await supabase
+            .from('USER')
+            .insert([{ email: userEmail }]);
+        }
+        localStorage.setItem('userEmail', userEmail);
+      }
+    };
+    checkOAuthUser();
+  }, []);
 
   useEffect(() => {
     (async () => {
       try {
         await fetchAndLogUserTypes();
         await testSupabaseConnection();
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err);
       }
     })();
@@ -39,6 +62,29 @@ const Login: React.FC = () => {
     setShowRegisterNowModal(false);
     history.push({ pathname: '/register', state: { userType: type } });
   };
+
+  // OAuth callback: after redirect to /home, check session and insert user if needed
+  useEffect(() => {
+    const checkOAuthUser = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userEmail = data?.session?.user?.email;
+      if (userEmail) {
+        // Check if user exists in public.USER
+        const { data: userExists } = await supabase
+          .from('USER')
+          .select('email')
+          .eq('email', userEmail)
+          .maybeSingle();
+        if (!userExists) {
+          await supabase
+            .from('USER')
+            .insert([{ email: userEmail }]);
+        }
+        localStorage.setItem('userEmail', userEmail);
+      }
+    };
+    checkOAuthUser();
+  }, []);
 
   return (
     <div className="login-container">
@@ -96,7 +142,7 @@ const Login: React.FC = () => {
               // Redirect to Welcome page with email
               localStorage.setItem('userEmail', email);
               history.push({ pathname: '/home', state: { email } });
-            } catch (err: any) {
+            } catch (err: unknown) {
               setError((err as Error).message || 'Login failed');
             }
             history.push({ pathname: '/home', state: { email } });
@@ -156,27 +202,7 @@ const Login: React.FC = () => {
                   });
                   if (error) {
                     setError(error.message);
-                    return;
                   }
-                  // After redirect, check session and create user in public.USER if needed
-                  setTimeout(async () => {
-                    const { data } = await supabase.auth.getSession();
-                    const userEmail = data?.session?.user?.email;
-                    if (userEmail) {
-                      // Check if user exists in public.USER
-                      const { data: userExists } = await supabase
-                        .from('USER')
-                        .select('email')
-                        .eq('email', userEmail)
-                        .maybeSingle();
-                      if (!userExists) {
-                        await supabase
-                          .from('USER')
-                          .insert([{ email: userEmail }]);
-                      }
-                      localStorage.setItem('userEmail', userEmail);
-                    }
-                  }, 1500);
                 }}
               >
                 <span className="icon"> <img src="./public/images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>

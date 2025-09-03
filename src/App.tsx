@@ -1,6 +1,8 @@
 import Home from './pages/Home';
 import AccountConfirmation from './components/AccountConfirmation';
 import { Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useHistory } from 'react-router-dom';
 import {
   IonApp,
   IonRouterOutlet,
@@ -40,11 +42,23 @@ import './theme/variables.css';
 
 setupIonicReact();
 
+const RedirectHandler: React.FC = () => {
+  const history = useHistory();
+  
+  useEffect(() => {
+    // Always redirect to /verified for root path
+    history.replace('/verified');
+  }, [history]);
+  
+  return null;
+};
+
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
       <IonRouterOutlet>
         <Route exact path="/">
+          <RedirectHandler />
         </Route>
         <Route exact path="/login">
           <Login />

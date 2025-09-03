@@ -26,7 +26,8 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
   // Fetch user info from Supabase USER table on mount
   React.useEffect(() => {
     const fetchUserInfo = async () => {
-      const sessionEmail = localStorage.getItem('userEmail');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionEmail = sessionData?.session?.user?.email;
       if (!sessionEmail) return;
       const { data, error } = await supabase
         .from('USER')
@@ -158,8 +159,9 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
                 alert('Contact number must be exactly 11 digits.');
                 return;
               }
-              // Get session email from localStorage
-              const sessionEmail = localStorage.getItem('userEmail');
+              // Get session email from Supabase active session
+              const { data: sessionData } = await supabase.auth.getSession();
+              const sessionEmail = sessionData?.session?.user?.email;
               if (!sessionEmail) {
                 alert('No session email found.');
                 return;
@@ -175,18 +177,26 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
                 setShowSaveModal(false);
                 setShowSuccessModal(true);
               }
-      {/* Success Modal */}
-      <IonModal isOpen={showSuccessModal} onDidDismiss={() => setShowSuccessModal(false)}>
-        <div style={{ padding: '32px', textAlign: 'center' }}>
-          <h2>Success</h2>
-          <p>Profile updated successfully!</p>
-          <IonButton color="primary" onClick={() => setShowSuccessModal(false)}>OK</IonButton>
-        </div>
-      </IonModal>
             }}>Save</IonButton>
             <IonButton expand="block" onClick={() => setShowSaveModal(false)}>Cancel</IonButton>
           </IonContent>
         </IonModal>
+        {/* Custom Success Modal */}
+      <IonModal isOpen={showSuccessModal} onDidDismiss={() => setShowSuccessModal(false)}>
+        <div style={{ padding: '32px', textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', marginRight: '8px' }}>Success</span>
+            <span style={{ color: 'green' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="12" fill="#4CAF50"/>
+                <path d="M7 13.5L10.5 17L17 10.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+          </div>
+          <p style={{ fontSize: '1.1rem', marginBottom: '24px' }}>Profile updated successfully!</p>
+          <IonButton color="primary" onClick={() => setShowSuccessModal(false)}>OK</IonButton>
+        </div>
+      </IonModal>
         </div>
       </IonContent>
     </IonMenu>
