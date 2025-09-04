@@ -1,0 +1,240 @@
+/* Admin Dashboard Styles */
+.dashboard-container {
+  padding: 20px 16px;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* Admin Segment Navigation */
+.admin-segment {
+  margin: 0 16px 20px 16px;
+  --background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.admin-segment ion-segment-button {
+  --color: #666;
+  --color-checked: #007bff;
+  --indicator-color: #007bff;
+  position: relative;
+}
+
+.admin-segment ion-segment-button ion-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+/* Welcome Section */
+.admin-welcome {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.admin-welcome h1 {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.admin-welcome p {
+  font-size: 16px;
+  color: #666;
+  margin: 0;
+}
+
+/* Stats Cards */
+.stats-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+}
+
+.stats-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-icon {
+  font-size: 32px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.stats-icon.total {
+  color: #007bff;
+  background: rgba(0, 123, 255, 0.1);
+}
+
+.stats-icon.pending {
+  color: #ffc107;
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.stats-icon.stores {
+  color: #28a745;
+  background: rgba(40, 167, 69, 0.1);
+}
+
+.stats-icon.shoppers {
+  color: #17a2b8;
+  background: rgba(23, 162, 184, 0.1);
+}
+
+.stats-info h2 {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  margin: 0;
+}
+
+.stats-info p {
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Quick Actions */
+.quick-actions {
+  margin-bottom: 30px;
+}
+
+.quick-actions h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 16px 0;
+}
+
+.action-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.action-info h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 4px 0;
+}
+
+.action-info p {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Recent Activity */
+.recent-activity {
+  margin-bottom: 30px;
+}
+
+.recent-activity h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 16px 0;
+}
+
+.activity-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.summary-item ion-icon {
+  font-size: 20px;
+}
+
+.summary-item span {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Responsive Design */
+@media (max-width: 576px) {
+  .admin-segment ion-segment-button {
+    flex-direction: column;
+    padding: 8px 4px;
+  }
+  
+  .admin-segment ion-segment-button ion-label {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  
+  .action-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .action-button {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+}
+
+/* Card Animations */
+.stats-card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease-in-out;
+}
+
+/* Badge Styling */
+ion-badge {
+  --padding-start: 6px;
+  --padding-end: 6px;
+  --padding-top: 2px;
+  --padding-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Logout Section */
+.admin-logout-section {
+  padding: 20px 16px;
+  margin-top: 40px;
+  border-top: 1px solid #e0e0e0;
+  background-color: #f8f9fa;
+}
+
+.admin-logout-btn {
+  --border-radius: 12px;
+  --border-color: #dc3545;
+  --color: #dc3545;
+  --border-width: 1px;
+  --border-style: solid;
+  height: 48px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.admin-logout-btn:hover {
+  --background: rgba(220, 53, 69, 0.1);
+}

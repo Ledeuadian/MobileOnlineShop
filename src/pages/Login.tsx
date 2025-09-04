@@ -3,7 +3,7 @@ import { useHistory, useLocation } from 'react-router-dom';
 import { IonModal, IonButton, IonInput, IonIcon, IonItem } from '@ionic/react';
 import { eye, eyeOff } from 'ionicons/icons';
 import './Login.css';
-import { fetchAndLogUserTypes, testSupabaseConnection, supabase } from '../services/supabaseService';
+import { fetchAndLogUserTypes, testSupabaseConnection, supabase, checkUserApprovalStatus } from '../services/supabaseService';
 
 const Login: React.FC = () => {
   // ...existing code...
@@ -81,10 +81,24 @@ const Login: React.FC = () => {
             .insert([{ email: userEmail }]);
         }
         localStorage.setItem('userEmail', userEmail);
+        
+        // Check user type and redirect accordingly
+        const approvalResult = await checkUserApprovalStatus(userEmail);
+        
+        if (approvalResult?.data?.userTypeCode === 1) {
+          // Admin user - redirect to admin dashboard
+          history.replace('/admin-dashboard');
+        } else if (approvalResult?.data?.userTypeCode === 3) {
+          // Store user - redirect to store dashboard
+          history.replace('/store-dashboard');
+        } else {
+          // Regular user or others - redirect to home
+          history.replace('/home');
+        }
       }
     };
     checkOAuthUser();
-  }, []);
+  }, [history]);
 
   return (
     <div className="login-container">
@@ -139,13 +153,26 @@ const Login: React.FC = () => {
                 setError(error.message);
                 return;
               }
-              // Redirect to Welcome page with email
+              
+              // Store email in localStorage
               localStorage.setItem('userEmail', email);
-              history.push({ pathname: '/home', state: { email } });
+              
+              // Check user type and redirect accordingly
+              const approvalResult = await checkUserApprovalStatus(email);
+              
+              if (approvalResult?.data?.userTypeCode === 1) {
+                // Admin user - redirect to admin dashboard
+                history.push('/admin-dashboard');
+              } else if (approvalResult?.data?.userTypeCode === 3) {
+                // Store user - redirect to store dashboard
+                history.push('/store-dashboard');
+              } else {
+                // Regular user or others - redirect to home
+                history.push({ pathname: '/home', state: { email } });
+              }
             } catch (err: unknown) {
               setError((err as Error).message || 'Login failed');
             }
-            history.push({ pathname: '/home', state: { email } });
           }}>
             <div className="login-form-logo">
               <img src="./public/images/GroSho.png" alt="GroSho Logo" className="login-image" />

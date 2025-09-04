@@ -29,7 +29,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
       const { data: sessionData } = await supabase.auth.getSession();
       const sessionEmail = sessionData?.session?.user?.email;
       if (!sessionEmail) return;
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('USER')
         .select('firstname, lastname, contactNumber')
         .eq('email', sessionEmail)
@@ -60,7 +60,12 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
   };
 
   return (
-    <IonMenu side="start" menuId="profile-menu">
+    <IonMenu side="end" menuId="profile-menu" contentId="main-content">
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Profile</IonTitle>
+        </IonToolbar>
+      </IonHeader>
       <IonContent className="profile-menu-content">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <IonButton fill="clear" onClick={handleCloseMenu} className="profile-menu-close-btn">
@@ -122,14 +127,18 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
             className="profile-menu-input"
           />
         </div>
+        
         {/* Save and Logout Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'start', gap: '5px', marginTop: '50%', marginLeft: '20%'}}>
+        <div className="profile-menu-actions">
           <IonButton color="primary" onClick={() => setShowSaveModal(true)}>
             Save
           </IonButton>
           <IonButton color="danger" onClick={() => setShowLogoutModal(true)}>
             Logout
           </IonButton>
+        </div>
+      </IonContent>
+
       {/* Logout Confirmation Modal */}
       <IonModal isOpen={showLogoutModal} onDidDismiss={() => setShowLogoutModal(false)}>
         <div style={{ padding: '32px', textAlign: 'center' }}>
@@ -145,43 +154,46 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
           </div>
         </div>
       </IonModal>
-        <IonModal isOpen={showSaveModal} onDidDismiss={() => setShowSaveModal(false)}>
-          <IonHeader>
-            <IonToolbar>
-              <IonTitle>Confirm Save</IonTitle>
-            </IonToolbar>
-          </IonHeader>
-          <IonContent className="ion-padding">
-            <p>Are you sure you want to save changes to your profile?</p>
-            <IonButton color="primary" expand="block" onClick={async () => {
-              // Validate contact number length
-              if (contact.length !== 11) {
-                alert('Contact number must be exactly 11 digits.');
-                return;
-              }
-              // Get session email from Supabase active session
-              const { data: sessionData } = await supabase.auth.getSession();
-              const sessionEmail = sessionData?.session?.user?.email;
-              if (!sessionEmail) {
-                alert('No session email found.');
-                return;
-              }
-              // Update USER table in Supabase
-              const { error } = await supabase
-                .from('USER')
-                .update({ firstname: first, lastname: last, contactNumber: contact })
-                .eq('email', sessionEmail);
-              if (error) {
-                alert('Failed to save: ' + error.message);
-              } else {
-                setShowSaveModal(false);
-                setShowSuccessModal(true);
-              }
-            }}>Save</IonButton>
-            <IonButton expand="block" onClick={() => setShowSaveModal(false)}>Cancel</IonButton>
-          </IonContent>
-        </IonModal>
-        {/* Custom Success Modal */}
+
+      {/* Save Confirmation Modal */}
+      <IonModal isOpen={showSaveModal} onDidDismiss={() => setShowSaveModal(false)}>
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Confirm Save</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">
+          <p>Are you sure you want to save changes to your profile?</p>
+          <IonButton color="primary" expand="block" onClick={async () => {
+            // Validate contact number length
+            if (contact.length !== 11) {
+              alert('Contact number must be exactly 11 digits.');
+              return;
+            }
+            // Get session email from Supabase active session
+            const { data: sessionData } = await supabase.auth.getSession();
+            const sessionEmail = sessionData?.session?.user?.email;
+            if (!sessionEmail) {
+              alert('No session email found.');
+              return;
+            }
+            // Update USER table in Supabase
+            const { error } = await supabase
+              .from('USER')
+              .update({ firstname: first, lastname: last, contactNumber: contact })
+              .eq('email', sessionEmail);
+            if (error) {
+              alert('Failed to save: ' + error.message);
+            } else {
+              setShowSaveModal(false);
+              setShowSuccessModal(true);
+            }
+          }}>Save</IonButton>
+          <IonButton expand="block" onClick={() => setShowSaveModal(false)}>Cancel</IonButton>
+        </IonContent>
+      </IonModal>
+
+      {/* Custom Success Modal */}
       <IonModal isOpen={showSuccessModal} onDidDismiss={() => setShowSuccessModal(false)}>
         <div style={{ padding: '32px', textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
@@ -197,8 +209,6 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
           <IonButton color="primary" onClick={() => setShowSuccessModal(false)}>OK</IonButton>
         </div>
       </IonModal>
-        </div>
-      </IonContent>
     </IonMenu>
   );
 };
