@@ -7,7 +7,6 @@ import './ProfileMenu.css';
 interface ProfileMenuProps {
   firstName?: string;
   lastName?: string;
-  email?: string;
   passwordMasked?: string;
   contactNumber?: string;
 }
@@ -15,24 +14,27 @@ interface ProfileMenuProps {
 const ProfileMenu: React.FC<ProfileMenuProps> = ({
   firstName = '',
   lastName = '',
-  email = '',
   passwordMasked = '',
   contactNumber = ''
 }) => {
   const [first, setFirst] = useState(firstName);
   const [last, setLast] = useState(lastName);
   const [contact, setContact] = useState(contactNumber);
+  const [sessionEmail, setSessionEmail] = useState('');
 
   // Fetch user info from Supabase USER table on mount
   React.useEffect(() => {
     const fetchUserInfo = async () => {
       const { data: sessionData } = await supabase.auth.getSession();
-      const sessionEmail = sessionData?.session?.user?.email;
-      if (!sessionEmail) return;
+      const userEmail = sessionData?.session?.user?.email;
+      if (!userEmail) return;
+      
+      setSessionEmail(userEmail);
+      
       const { data } = await supabase
         .from('USER')
         .select('firstname, lastname, contactNumber')
-        .eq('email', sessionEmail)
+        .eq('email', userEmail)
         .single();
       if (data) {
         if (data.firstname) setFirst(data.firstname);
@@ -96,7 +98,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <IonIcon icon={mailOutline} className="profile-menu-icon" />
           <IonInput
-            value={email}
+            value={sessionEmail}
             placeholder="Email"
             readonly
             className="profile-menu-input"
@@ -170,9 +172,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
               alert('Contact number must be exactly 11 digits.');
               return;
             }
-            // Get session email from Supabase active session
-            const { data: sessionData } = await supabase.auth.getSession();
-            const sessionEmail = sessionData?.session?.user?.email;
+            // Use sessionEmail from state
             if (!sessionEmail) {
               alert('No session email found.');
               return;

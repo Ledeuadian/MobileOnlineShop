@@ -85,10 +85,17 @@ const Login: React.FC = () => {
         // Check user type and redirect accordingly
         const approvalResult = await checkUserApprovalStatus(userEmail);
         
-        if (approvalResult?.data?.userTypeCode === 1) {
+        // Check if user is pending approval
+        if (approvalResult?.data?.approval_status === 'pending') {
+          // User is pending approval - redirect to pending page
+          history.replace('/pending-approval');
+        } else if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
           // Admin user - redirect to admin dashboard
           history.replace('/admin-dashboard');
-        } else if (approvalResult?.data?.userTypeCode === 3) {
+        } else if (approvalResult?.data?.userTypeCode === 2 && approvalResult.data.approval_status === 'approved') {
+          // DTI user - redirect to DTI dashboard
+          history.replace('/dti-dashboard');
+        } else if (approvalResult?.data?.userTypeCode === 3 && approvalResult.data.approval_status === 'approved') {
           // Store user - redirect to store dashboard
           history.replace('/store-dashboard');
         } else {
@@ -160,10 +167,17 @@ const Login: React.FC = () => {
               // Check user type and redirect accordingly
               const approvalResult = await checkUserApprovalStatus(email);
               
-              if (approvalResult?.data?.userTypeCode === 1) {
+              // Check if user is pending approval
+              if (approvalResult?.data?.approval_status === 'pending') {
+                // User is pending approval - redirect to pending page
+                history.push('/pending-approval');
+              } else if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
                 // Admin user - redirect to admin dashboard
                 history.push('/admin-dashboard');
-              } else if (approvalResult?.data?.userTypeCode === 3) {
+              } else if (approvalResult?.data?.userTypeCode === 2 && approvalResult.data.approval_status === 'approved') {
+                // DTI user - redirect to DTI dashboard
+                history.push('/dti-dashboard');
+              } else if (approvalResult?.data?.userTypeCode === 3 && approvalResult.data.approval_status === 'approved') {
                 // Store user - redirect to store dashboard
                 history.push('/store-dashboard');
               } else {

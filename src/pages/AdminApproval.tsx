@@ -28,7 +28,8 @@ import { getPendingUsers, approveUser, rejectUser } from '../services/supabaseSe
 import './AdminApproval.css';
 
 interface PendingUser {
-  UserID: number;
+  userId: number;
+  auth_user_id: string;
   email: string;
   firstname: string;
   lastname: string;
@@ -93,10 +94,10 @@ const AdminApproval: React.FC = () => {
     try {
       if (alertAction === 'approve') {
         await approveUser(selectedUser.email);
-        showToastMessage(`${selectedUser.firstname} ${selectedUser.lastname} has been approved!`);
+        showToastMessage(`${selectedUser.email} registration has been approved!`);
       } else {
         await rejectUser(selectedUser.email);
-        showToastMessage(`${selectedUser.firstname} ${selectedUser.lastname} has been rejected!`, 'warning');
+        showToastMessage(`${selectedUser.email} registration has been rejected!`, 'warning');
       }
       
       // Refresh the list
@@ -172,7 +173,7 @@ const AdminApproval: React.FC = () => {
           ) : (
             <IonList>
               {pendingUsers.map((user) => (
-                <IonCard key={user.UserID} className="user-card">
+                <IonCard key={user.userId} className="user-card">
                   <IonCardContent>
                     <div className="user-info">
                       <div className="user-details">

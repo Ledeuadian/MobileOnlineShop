@@ -147,6 +147,9 @@ export async function RegisterUser(email: string, password: string, confirmPassw
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      emailRedirectTo: `${window.location.origin}/verified`
+    }
   });
 
   if (error) {
@@ -160,10 +163,10 @@ export async function RegisterUser(email: string, password: string, confirmPassw
       .from('USER')
       .insert([
         { 
-          id: data.user.id,
+          auth_user_id: data.user.id,
           email: data.user.email,
           userTypeCode: userTypeCode || 2, // Default to DTI user
-          approval_status: userTypeCode && userTypeCode !== 2 ? 'pending' : 'approved' // DTI users auto-approved
+          approval_status: (userTypeCode === 2 || userTypeCode === 3) ? 'pending' : 'approved' // DTI and STORE users need approval
         }
       ]);
 
@@ -187,6 +190,116 @@ export async function createAdminUser(email: string, password: string) {
   }
   
   return result;
+}
+
+// OAuth sign in with Facebook
+export async function signInWithFacebook() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: {
+      redirectTo: `${window.location.origin}/oauth-callback`
+    }
+  });
+
+  if (error) {
+    console.error('Facebook OAuth error:', error.message);
+    return { error: error.message };
+  }
+
+  return { data };
+}
+
+// OAuth sign in with Twitter
+export async function signInWithTwitter() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'twitter',
+    options: {
+      redirectTo: `${window.location.origin}/oauth-callback`
+    }
+  });
+
+  if (error) {
+    console.error('Twitter OAuth error:', error.message);
+    return { error: error.message };
+  }
+
+  return { data };
+}
+
+// Create user from OAuth session
+export async function createUserFromOAuthSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session?.user?.email) {
+    return { error: 'No active OAuth session found' };
+  }
+
+  const userEmail = session.user.email;
+  const authUserId = session.user.id;
+
+  console.log('Checking for existing user with email:', userEmail);
+
+  try {
+    // First, check if user already exists
+    const { data: existingUser, error: checkError } = await supabase
+      .from('USER')
+      .select('userId, email, auth_user_id, userTypeCode, approval_status')
+      .eq('email', userEmail)
+      .limit(1);
+
+    if (checkError) {
+      console.error('Error checking for existing user:', checkError.message);
+      return { error: checkError.message };
+    }
+
+    // If user exists, return the first one found
+    if (existingUser && existingUser.length > 0) {
+      console.log('User already exists in USER table:', existingUser[0]);
+      return { data: existingUser[0], message: 'User already exists' };
+    }
+
+    console.log('Creating new OAuth user for email:', userEmail);
+
+    // Create new user in public.USER table
+    const { data, error } = await supabase
+      .from('USER')
+      .insert([
+        {
+          auth_user_id: authUserId,
+          email: userEmail,
+          userTypeCode: 4, // Default to Shopper user for OAuth registrations
+          approval_status: 'approved' // OAuth users auto-approved
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating user from OAuth session:', error.message);
+      
+      // If it's a duplicate error, try to fetch the existing user again
+      if (error.code === '23505' || error.message.includes('duplicate') || error.message.includes('unique')) {
+        console.log('Duplicate user detected, fetching existing user...');
+        const { data: existingUserAfterError } = await supabase
+          .from('USER')
+          .select('userId, email, auth_user_id, userTypeCode, approval_status')
+          .eq('email', userEmail)
+          .limit(1);
+        
+        if (existingUserAfterError && existingUserAfterError.length > 0) {
+          return { data: existingUserAfterError[0], message: 'User already exists' };
+        }
+      }
+      return { error: error.message };
+    }
+
+    console.log('User created successfully from OAuth session:', data);
+    return { data, success: true };
+    
+  } catch (err) {
+    console.error('Unexpected error in OAuth user creation:', err);
+    return { error: 'Failed to create or retrieve user account' };
+  }
 }
 
 export default supabase;

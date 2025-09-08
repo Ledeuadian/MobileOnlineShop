@@ -33,8 +33,11 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
 import AccountConfirmation from './components/AccountConfirmation';
+import OAuthCallback from './components/OAuthCallback';
+import PendingApproval from './pages/PendingApproval';
 import AdminDashboard from './pages/AdminDashboard';
 import StoreDashboard from './pages/StoreDashboard';
+import DTIDashboard from './pages/DTIDashboard';
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 
 setupIonicReact();
@@ -62,9 +65,16 @@ const RedirectHandler: React.FC = () => {
           
           console.log('User profile:', approvalResult.data);
           
-          if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
+          // Check if user is pending approval
+          if (approvalResult?.data?.approval_status === 'pending') {
+            console.log('User is pending approval, redirecting to pending page');
+            history.push('/pending-approval');
+          } else if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
             console.log('Redirecting to admin dashboard');
             history.push('/admin-dashboard');
+          } else if (approvalResult?.data?.userTypeCode === 2 && approvalResult.data.approval_status === 'approved') {
+            console.log('Redirecting to DTI dashboard');
+            history.push('/dti-dashboard');
           } else if (approvalResult?.data?.userTypeCode === 3 && approvalResult.data.approval_status === 'approved') {
             console.log('Redirecting to store dashboard');
             history.push('/store-dashboard');
@@ -213,34 +223,203 @@ const ProtectedStoreRoute: React.FC = () => {
   return isAuthorized ? <StoreDashboard /> : null;
 };
 
-const App: React.FC = () => (
-  <IonApp>
-    <IonReactRouter>
-      <IonRouterOutlet>
-        <Route exact path="/">
-          <RedirectHandler />
-        </Route>
-        <Route exact path="/login">
-          <Login />
-        </Route>
-        <Route exact path="/register">
-          <Register />
-        </Route>
-        <Route exact path="/home">
-          <Home />
-        </Route>
-        <Route exact path="/verified">
-          <AccountConfirmation />
-        </Route>
-        <Route exact path="/admin-dashboard">
-          <ProtectedAdminRoute />
-        </Route>
-        <Route exact path="/store-dashboard">
-          <ProtectedStoreRoute />
-        </Route>
-      </IonRouterOutlet>
-    </IonReactRouter>
-  </IonApp>
-);
+const ProtectedDTIRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          history.push('/login');
+          return;
+        }
+
+        // Check user approval status
+        const approvalResult = await checkUserApprovalStatus(session.user.email);
+        
+        if (approvalResult?.data && 
+            approvalResult.data.userTypeCode === 2 && 
+            approvalResult.data.approval_status === 'approved') {
+          setIsAuthorized(true);
+        } else {
+          history.push('/home');
+        }
+      } catch (error) {
+        console.error('Error checking DTI authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? <DTIDashboard /> : null;
+};
+
+const ProtectedHomeRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        console.log('🟢 Session found for Home route:', session.user.email);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking home authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? <Home /> : null;
+};
+
+const App: React.FC = () => {
+  // Global session monitoring
+  useEffect(() => {
+    console.log('🔐 Initializing global session monitoring...');
+    
+    // Check initial session
+    const checkInitialSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log('🟢 Active session detected on app start:', {
+            user_id: session.user.id,
+            email: session.user.email,
+            expires_at: new Date(session.expires_at! * 1000).toLocaleString(),
+            access_token: session.access_token.substring(0, 20) + '...',
+            refresh_token: session.refresh_token?.substring(0, 20) + '...' || 'N/A'
+          });
+        } else {
+          console.log('🔴 No active session on app start');
+        }
+      } catch (error) {
+        console.error('❌ Error checking initial session:', error);
+      }
+    };
+
+    checkInitialSession();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔄 Auth state changed:', event);
+      
+      if (session) {
+        console.log('🟢 Active session:', {
+          event: event,
+          user_id: session.user.id,
+          email: session.user.email,
+          expires_at: new Date(session.expires_at! * 1000).toLocaleString(),
+          access_token: session.access_token.substring(0, 20) + '...',
+          refresh_token: session.refresh_token?.substring(0, 20) + '...' || 'N/A',
+          user_metadata: session.user.user_metadata,
+          app_metadata: session.user.app_metadata
+        });
+      } else {
+        console.log('🔴 No active session (user logged out or session expired)');
+      }
+    });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('🧹 Cleaning up global session monitor');
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  return (
+    <IonApp>
+      <IonReactRouter>
+        <IonRouterOutlet>
+          <Route exact path="/">
+            <RedirectHandler />
+          </Route>
+          <Route exact path="/login">
+            <Login />
+          </Route>
+          <Route exact path="/register">
+            <Register />
+          </Route>
+          <Route exact path="/home">
+            <ProtectedHomeRoute />
+          </Route>
+          <Route exact path="/verified">
+            <AccountConfirmation />
+          </Route>
+          <Route exact path="/oauth-callback">
+            <OAuthCallback />
+          </Route>
+          <Route exact path="/pending-approval">
+            <PendingApproval />
+          </Route>
+          <Route exact path="/admin-dashboard">
+            <ProtectedAdminRoute />
+          </Route>
+          <Route exact path="/store-dashboard">
+            <ProtectedStoreRoute />
+          </Route>
+          <Route exact path="/dti-dashboard">
+            <ProtectedDTIRoute />
+          </Route>
+        </IonRouterOutlet>
+      </IonReactRouter>
+    </IonApp>
+  );
+};
 
 export default App;

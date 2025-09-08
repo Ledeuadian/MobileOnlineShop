@@ -248,7 +248,6 @@ const AdminDashboard: React.FC = () => {
       <IonContent fullscreen>
         {/* Side Drawer Menu */}
         <ProfileMenu
-          email={email}
           passwordMasked={localStorage.getItem('userPasswordMasked') || '****'}
         />
 

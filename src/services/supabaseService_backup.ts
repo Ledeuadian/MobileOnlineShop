@@ -147,6 +147,9 @@ export async function RegisterUser(email: string, password: string, confirmPassw
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      emailRedirectTo: `${window.location.origin}/verified`
+    }
   });
 
   if (error) {
@@ -160,7 +163,7 @@ export async function RegisterUser(email: string, password: string, confirmPassw
       .from('USER')
       .insert([
         { 
-          id: data.user.id,
+          auth_user_id: data.user.id,
           email: data.user.email,
           userTypeCode: userTypeCode || 2, // Default to DTI user
           approval_status: userTypeCode && userTypeCode !== 2 ? 'pending' : 'approved' // DTI users auto-approved

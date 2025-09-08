@@ -15,9 +15,9 @@ const Register: React.FC = () => {
   const location = useLocation();
   const userType = (location.state as { userType?: string })?.userType;
   let userTypeCode: number | undefined;
-  if (userType === 'DTI') userTypeCode = 1;
-  else if (userType === 'STORE') userTypeCode = 2;
-  else if (userType === 'SHOPPER') userTypeCode = 3;
+  if (userType === 'DTI') userTypeCode = 2;
+  else if (userType === 'STORE') userTypeCode = 3;
+  else if (userType === 'SHOPPER') userTypeCode = 4;
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [email, setEmail] = useState('');

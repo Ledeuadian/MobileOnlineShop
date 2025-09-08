@@ -1,0 +1,281 @@
+.dti-analytics-container,
+.dti-stores-container,
+.dti-pricing-container {
+  padding: 1rem;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+.dti-welcome {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 1rem;
+}
+
+.dti-welcome h1 {
+  color: #2c5282;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.dti-welcome p {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* DTI Stats Cards */
+.dti-stats-card {
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: white;
+}
+
+.dti-stats-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem;
+}
+
+.dti-stats-icon {
+  font-size: 2rem;
+  min-width: 40px;
+}
+
+.dti-stats-icon.stores {
+  color: #3182ce;
+}
+
+.dti-stats-icon.items {
+  color: #38a169;
+}
+
+.dti-stats-icon.pricing {
+  color: #f56500;
+}
+
+.dti-stats-icon.transactions {
+  color: #9f7aea;
+}
+
+.dti-stats-info h2 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0;
+  color: #2d3748;
+}
+
+.dti-stats-info p {
+  font-size: 0.8rem;
+  color: #666;
+  margin: 0;
+}
+
+/* DTI Sections */
+.dti-section {
+  margin: 2rem 0;
+}
+
+.dti-section h3 {
+  color: #2c5282;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding-left: 0.5rem;
+}
+
+.dti-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0 0.5rem;
+}
+
+.dti-section-header h2 {
+  color: #2c5282;
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* DTI Insights */
+.dti-insights {
+  margin-top: 1rem;
+}
+
+.insight-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: #f7fafc;
+  border-radius: 8px;
+}
+
+.insight-item span {
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+/* Store Monitoring */
+.store-monitoring-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.store-info h3 {
+  color: #2d3748;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem 0;
+}
+
+.store-info p {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0.15rem 0;
+}
+
+.store-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* Item Pricing Analysis */
+.pricing-analysis-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.item-info h3 {
+  color: #2d3748;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem 0;
+}
+
+.item-info p {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.price-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+
+.price-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.price-label {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.price-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.price-value.avg {
+  color: #3182ce;
+  font-weight: 700;
+}
+
+/* DTI Segment */
+.dti-segment {
+  margin: 1rem;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* DTI Loading */
+.dti-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 1rem;
+}
+
+.dti-loading p {
+  color: #666;
+  font-size: 1rem;
+}
+
+/* DTI Logout */
+.dti-logout-section {
+  margin: 2rem 1rem 1rem 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dti-logout-btn {
+  --background: transparent;
+  --color: #e53e3e;
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+  .dti-analytics-container,
+  .dti-stores-container,
+  .dti-pricing-container {
+    padding: 0.75rem;
+  }
+  
+  .dti-welcome h1 {
+    font-size: 1.3rem;
+  }
+  
+  .dti-stats-content {
+    gap: 0.75rem;
+  }
+  
+  .dti-stats-icon {
+    font-size: 1.75rem;
+  }
+  
+  .dti-stats-info h2 {
+    font-size: 1.5rem;
+  }
+  
+  .store-monitoring-item,
+  .pricing-analysis-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .store-actions {
+    align-items: flex-start;
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .price-range {
+    width: 100%;
+  }
+}
