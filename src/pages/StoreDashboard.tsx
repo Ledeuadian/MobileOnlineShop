@@ -42,22 +42,24 @@ import { supabase } from '../services/supabaseService';
 import './StoreDashboard.css';
 
 interface StoreInfo {
+  store_id?: number;
   storeId?: number;
-  storeName: string;
-  storeDescription: string;
+  id?: number;
+  name: string;
+  store_description: string;
   store_address: string;
   store_phone: string;
   store_email: string;
-  store_image_url?: string;
+  store_image_url: string;
 }
 
 interface StockItem {
-  storeItemId?: number;
-  item_name: string;
-  item_description: string;
-  item_price: number;
-  item_quantity: number;
-  item_category: string;
+  storeitemid?: number;
+  name: string;
+  description: string;
+  price: number;
+  availability: number;
+  category: string;
   item_image_url?: string;
   storeId: number;
 }
@@ -65,22 +67,23 @@ interface StockItem {
 const StoreDashboard: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
-    storeName: '',
-    storeDescription: '',
+    name: '',
+    store_description: '',
     store_address: '',
     store_phone: '',
-    store_email: ''
+    store_email: '',
+    store_image_url: ''
   });
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
   const [newItem, setNewItem] = useState<StockItem>({
-    item_name: '',
-    item_description: '',
-    item_price: 0,
-    item_quantity: 0,
-    item_category: '',
+    name: '',
+    description: '',
+    price: 0,
+    availability: 0,
+    category: '',
     storeId: 0
   });
   const [currentUser, setCurrentUser] = useState<{id: string; email?: string} | null>(null);
@@ -132,7 +135,11 @@ const StoreDashboard: React.FC = () => {
       }
 
       if (data) {
+        console.log('🏪 Loaded store data:', data);
+        console.log('🔑 Available keys:', Object.keys(data));
         setStoreInfo(data);
+      } else {
+        console.log('❌ No store data found for user:', userId);
       }
     } catch (error) {
       console.error('Error loading store info:', error);
@@ -144,15 +151,19 @@ const StoreDashboard: React.FC = () => {
       // First get the store ID
       const { data: storeData } = await supabase
         .from('GROCERY_STORE')
-        .select('storeId')
+        .select('*')
         .eq('owner_id', userId)
         .single();
 
       if (storeData) {
+        console.log('🏪 Store data for loading items:', storeData);
+        const currentStoreId = storeData.store_id || storeData.storeId || storeData.id;
+        console.log('🔑 Using store ID for items:', currentStoreId);
+        
         const { data: items, error } = await supabase
           .from('ITEMS_IN_STORE')
           .select('*')
-          .eq('storeId', storeData.storeId);
+          .eq('storeId', currentStoreId);
 
         if (error) {
           console.error('Error loading stock items:', error);
@@ -177,12 +188,12 @@ const StoreDashboard: React.FC = () => {
       };
 
       let result;
-      if (storeInfo.storeId) {
+      if (storeInfo.store_id) {
         // Update existing store
         result = await supabase
           .from('GROCERY_STORE')
           .update(storeData)
-          .eq('storeId', storeInfo.storeId);
+          .eq('store_id', storeInfo.store_id);
       } else {
         // Create new store
         result = await supabase
@@ -212,15 +223,24 @@ const StoreDashboard: React.FC = () => {
 
   const saveStockItem = async () => {
     try {
-      if (!storeInfo.storeId) {
+      console.log('🧪 Checking store info:', storeInfo);
+      console.log('� Store info keys:', Object.keys(storeInfo));
+      
+      // Check for store ID using multiple possible column names
+      const storeId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
+      console.log('� Found store ID:', storeId);
+      
+      if (!storeId) {
+        console.log('❌ No store ID found');
         setAlertMessage('Please save store information first');
         setShowAlert(true);
         return;
       }
 
+      const currentStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
       const itemData = {
         ...newItem,
-        storeId: storeInfo.storeId,
+        storeId: currentStoreId,
         updated_at: new Date().toISOString()
       };
 
@@ -230,7 +250,7 @@ const StoreDashboard: React.FC = () => {
         result = await supabase
           .from('ITEMS_IN_STORE')
           .update(itemData)
-          .eq('storeItemId', editingItem.storeItemId);
+          .eq('storeitemid', editingItem.storeitemid);
       } else {
         // Create new item
         result = await supabase
@@ -246,13 +266,14 @@ const StoreDashboard: React.FC = () => {
       setShowAlert(true);
       setIsItemModalOpen(false);
       setEditingItem(null);
+      const resetStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
       setNewItem({
-        item_name: '',
-        item_description: '',
-        item_price: 0,
-        item_quantity: 0,
-        item_category: '',
-        storeId: storeInfo.storeId || 0
+        name: '',
+        description: '',
+        price: 0,
+        availability: 0,
+        category: '',
+        storeId: resetStoreId || 0
       });
       
       if (currentUser) {
@@ -270,7 +291,7 @@ const StoreDashboard: React.FC = () => {
       const { error } = await supabase
         .from('ITEMS_IN_STORE')
         .delete()
-        .eq('itemId', itemId);
+        .eq('storeitemid', itemId);
 
       if (error) {
         throw error;
@@ -296,13 +317,14 @@ const StoreDashboard: React.FC = () => {
 
   const openAddItem = () => {
     setEditingItem(null);
+    const addItemStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
     setNewItem({
-      item_name: '',
-      item_description: '',
-      item_price: 0,
-      item_quantity: 0,
-      item_category: '',
-      storeId: storeInfo.storeId || 0
+      name: '',
+      description: '',
+      price: 0,
+      availability: 0,
+      category: '',
+      storeId: addItemStoreId || 0
     });
     setIsItemModalOpen(true);
   };
@@ -330,7 +352,7 @@ const StoreDashboard: React.FC = () => {
                 <div className="stats-item">
                   <IonIcon icon={storefront} />
                   <div>
-                    <h3>{storeInfo.storeName || 'Not Set'}</h3>
+                    <h3>{storeInfo.name || 'Not Set'}</h3>
                     <p>Store Name</p>
                   </div>
                 </div>
@@ -386,11 +408,11 @@ const StoreDashboard: React.FC = () => {
           <div className="store-details">
             <IonItem>
               <IonLabel position="stacked">Store Name</IonLabel>
-              <p>{storeInfo.storeName || 'Not set'}</p>
+              <p>{storeInfo.name || 'Not set'}</p>
             </IonItem>
             <IonItem>
               <IonLabel position="stacked">Description</IonLabel>
-              <p>{storeInfo.storeDescription || 'Not set'}</p>
+              <p>{storeInfo.store_description || 'Not set'}</p>
             </IonItem>
             <IonItem>
               <IonLabel position="stacked">Address</IonLabel>
@@ -403,6 +425,10 @@ const StoreDashboard: React.FC = () => {
             <IonItem>
               <IonLabel position="stacked">Email</IonLabel>
               <p>{storeInfo.store_email || 'Not set'}</p>
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Store Image URL</IonLabel>
+              <p>{storeInfo.store_image_url || 'Not set'}</p>
             </IonItem>
             <IonButton 
               expand="block" 
@@ -431,16 +457,16 @@ const StoreDashboard: React.FC = () => {
       
       <IonList>
         {stockItems.map((item) => (
-          <IonCard key={item.storeItemId}>
+          <IonCard key={item.storeitemid}>
             <IonCardContent>
               <div className="stock-item">
                 <div className="item-info">
-                  <h3>{item.item_name}</h3>
-                  <p>{item.item_description}</p>
+                  <h3>{item.name}</h3>
+                  <p>{item.description}</p>
                   <div className="item-details">
-                    <span className="price">${item.item_price}</span>
-                    <span className="quantity">Qty: {item.item_quantity}</span>
-                    <span className="category">{item.item_category}</span>
+                    <span className="price">${item.price}</span>
+                    <span className="quantity">Qty: {item.availability}</span>
+                    <span className="category">{item.category}</span>
                   </div>
                 </div>
                 <div className="item-actions">
@@ -453,7 +479,7 @@ const StoreDashboard: React.FC = () => {
                   <IonButton 
                     fill="clear" 
                     color="danger"
-                    onClick={() => deleteStockItem(item.storeItemId!)}
+                    onClick={() => deleteStockItem(item.storeitemid!)}
                   >
                     <IonIcon icon={trash} />
                   </IonButton>
@@ -513,16 +539,16 @@ const StoreDashboard: React.FC = () => {
               <IonItem>
                 <IonLabel position="stacked">Store Name</IonLabel>
                 <IonInput
-                  value={storeInfo.storeName}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, storeName: e.detail.value!})}
+                  value={storeInfo.name}
+                  onIonInput={(e) => setStoreInfo({...storeInfo, name: e.detail.value!})}
                   placeholder="Enter store name"
                 />
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Description</IonLabel>
                 <IonTextarea
-                  value={storeInfo.storeDescription}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, storeDescription: e.detail.value!})}
+                  value={storeInfo.store_description}
+                  onIonInput={(e) => setStoreInfo({...storeInfo, store_description: e.detail.value!})}
                   placeholder="Enter store description"
                   rows={3}
                 />
@@ -553,6 +579,15 @@ const StoreDashboard: React.FC = () => {
                   type="email"
                 />
               </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Store Image URL</IonLabel>
+                <IonInput
+                  value={storeInfo.store_image_url}
+                  onIonInput={(e) => setStoreInfo({...storeInfo, store_image_url: e.detail.value!})}
+                  placeholder="Enter store image URL"
+                  type="url"
+                />
+              </IonItem>
               <IonButton expand="block" onClick={saveStoreInfo} className="save-button">
                 <IonIcon icon={save} slot="start" />
                 Save Store Information
@@ -578,16 +613,16 @@ const StoreDashboard: React.FC = () => {
               <IonItem>
                 <IonLabel position="stacked">Item Name</IonLabel>
                 <IonInput
-                  value={newItem.item_name}
-                  onIonInput={(e) => setNewItem({...newItem, item_name: e.detail.value!})}
+                  value={newItem.name}
+                  onIonInput={(e) => setNewItem({...newItem, name: e.detail.value!})}
                   placeholder="Enter item name"
                 />
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Description</IonLabel>
                 <IonTextarea
-                  value={newItem.item_description}
-                  onIonInput={(e) => setNewItem({...newItem, item_description: e.detail.value!})}
+                  value={newItem.description}
+                  onIonInput={(e) => setNewItem({...newItem, description: e.detail.value!})}
                   placeholder="Enter item description"
                   rows={3}
                 />
@@ -595,8 +630,8 @@ const StoreDashboard: React.FC = () => {
               <IonItem>
                 <IonLabel position="stacked">Category</IonLabel>
                 <IonSelect
-                  value={newItem.item_category}
-                  onIonChange={(e) => setNewItem({...newItem, item_category: e.detail.value})}
+                  value={newItem.category}
+                  onIonChange={(e) => setNewItem({...newItem, category: e.detail.value})}
                   placeholder="Select category"
                 >
                   {categories.map((category) => (
@@ -607,11 +642,11 @@ const StoreDashboard: React.FC = () => {
                 </IonSelect>
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Price ($)</IonLabel>
+                <IonLabel position="stacked">Price (₱)</IonLabel>
                 <IonInput
                   type="number"
-                  value={newItem.item_price}
-                  onIonInput={(e) => setNewItem({...newItem, item_price: parseFloat(e.detail.value!) || 0})}
+                  value={newItem.price}
+                  onIonInput={(e) => setNewItem({...newItem, price: parseFloat(e.detail.value!) || 0})}
                   placeholder="Enter price"
                 />
               </IonItem>
@@ -619,9 +654,18 @@ const StoreDashboard: React.FC = () => {
                 <IonLabel position="stacked">Quantity</IonLabel>
                 <IonInput
                   type="number"
-                  value={newItem.item_quantity}
-                  onIonInput={(e) => setNewItem({...newItem, item_quantity: parseInt(e.detail.value!) || 0})}
+                  value={newItem.availability}
+                  onIonInput={(e) => setNewItem({...newItem, availability: parseInt(e.detail.value!) || 0})}
                   placeholder="Enter quantity"
+                />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Item Image URL</IonLabel>
+                <IonInput
+                  value={newItem.item_image_url}
+                  onIonInput={(e) => setNewItem({...newItem, item_image_url: e.detail.value!})}
+                  placeholder="Enter image URL (optional)"
+                  type="url"
                 />
               </IonItem>
               <IonButton expand="block" onClick={saveStockItem} className="save-button">
