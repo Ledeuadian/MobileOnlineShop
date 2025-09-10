@@ -70,7 +70,7 @@ const Register: React.FC = () => {
   return (
     <div className="register-container">
       <div className="register-form-logo">
-        <img src="./public/images/GroSho.png" alt="GroSho Logo" className="register-image" />
+        <img src="/Images/GroSho.png" alt="GroSho Logo" className="register-image" />
       </div>
       <form className="register-form" onSubmit={handleSubmit}>
         <IonItem className="register-input" style={{ background: '#fff', borderRadius: '8px', height: '48px', boxSizing: 'border-box', padding: '0 12px', marginBottom: '16px', border: '1px solid #ccc' }}>

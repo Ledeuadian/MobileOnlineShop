@@ -112,7 +112,7 @@ const Login: React.FC = () => {
       {!showLoginForm ? (
         <>
           <img
-            src="./public/images/GroSho.png"
+            src="/Images/GroSho.png"
             alt="Random"
             className="login-image"
           />
@@ -189,7 +189,7 @@ const Login: React.FC = () => {
             }
           }}>
             <div className="login-form-logo">
-              <img src="./public/images/GroSho.png" alt="GroSho Logo" className="login-image" />
+              <img src="/Images/GroSho.png" alt="GroSho Logo" className="login-image" />
             </div>
             <IonItem className="login-input" style={{ background: '#fff', borderRadius: '8px', height: '48px', boxSizing: 'border-box', padding: '0 12px', marginBottom: '16px', border: '1px solid #ccc' }}>
               <IonInput
@@ -246,10 +246,10 @@ const Login: React.FC = () => {
                   }
                 }}
               >
-                <span className="icon"> <img src="./public/images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>
+                <span className="icon"> <img src="/Images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>
               </button>
             <button type="button" className="social-btn">
-              <span className="icon"> <img src="./public/images/x.png" alt="X Logo" className="social-icon-img" /></span>
+              <span className="icon"> <img src="/Images/x.png" alt="X Logo" className="social-icon-img" /></span>
             </button>
           </div>
           <div className="signup-link">

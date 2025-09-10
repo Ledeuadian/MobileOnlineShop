@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:analyze": "npm run build && npx vite-bundle-analyzer dist",
     "preview": "vite preview",
     "test.e2e": "cypress run",
     "test.unit": "vitest",

@@ -13,7 +13,6 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonItem,
-  IonIcon,
   IonButton,
   IonList,
   IonInput,
@@ -25,7 +24,9 @@ import {
   IonCol,
   IonSelect,
   IonSelectOption,
-  IonAlert
+  IonAlert,
+  IonProgressBar,
+  IonIcon
 } from '@ionic/react';
 import {
   storefront,
@@ -54,12 +55,14 @@ interface StoreInfo {
 }
 
 interface StockItem {
-  storeitemid?: number;
+  storeItemId?: number;
   name: string;
   description: string;
   price: number;
   availability: number;
   category: string;
+  unit?: string;
+  brand?: string;
   item_image_url?: string;
   storeId: number;
 }
@@ -84,8 +87,20 @@ const StoreDashboard: React.FC = () => {
     price: 0,
     availability: 0,
     category: '',
+    unit: '',
+    brand: '',
     storeId: 0
   });
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  // Item image upload states
+  const [selectedItemImage, setSelectedItemImage] = useState<File | null>(null);
+  const [itemUploadProgress, setItemUploadProgress] = useState(0);
+  const [isItemUploading, setIsItemUploading] = useState(false);
+  const [itemImagePreview, setItemImagePreview] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{id: string; email?: string} | null>(null);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
@@ -135,11 +150,12 @@ const StoreDashboard: React.FC = () => {
       }
 
       if (data) {
-        console.log('🏪 Loaded store data:', data);
-        console.log('🔑 Available keys:', Object.keys(data));
-        setStoreInfo(data);
-      } else {
-        console.log('❌ No store data found for user:', userId);
+        // Map database column names to frontend field names
+        const mappedData = {
+          ...data,
+          store_address: data.location // Map location to store_address
+        };
+        setStoreInfo(mappedData);
       }
     } catch (error) {
       console.error('Error loading store info:', error);
@@ -156,9 +172,7 @@ const StoreDashboard: React.FC = () => {
         .single();
 
       if (storeData) {
-        console.log('🏪 Store data for loading items:', storeData);
         const currentStoreId = storeData.store_id || storeData.storeId || storeData.id;
-        console.log('🔑 Using store ID for items:', currentStoreId);
         
         const { data: items, error } = await supabase
           .from('ITEMS_IN_STORE')
@@ -181,34 +195,41 @@ const StoreDashboard: React.FC = () => {
     try {
       if (!currentUser) return;
 
+      // Map the frontend fields to database column names
       const storeData = {
-        ...storeInfo,
+        storeId: storeInfo.store_id || storeInfo.storeId,
+        name: storeInfo.name,
+        store_description: storeInfo.store_description,
+        location: storeInfo.store_address, // Map store_address to location
+        store_phone: storeInfo.store_phone,
+        store_email: storeInfo.store_email,
+        store_image_url: storeInfo.store_image_url,
         owner_id: currentUser.id,
         updated_at: new Date().toISOString()
       };
 
-      let result;
-      if (storeInfo.store_id) {
-        // Update existing store
-        result = await supabase
-          .from('GROCERY_STORE')
-          .update(storeData)
-          .eq('store_id', storeInfo.store_id);
-      } else {
-        // Create new store
-        result = await supabase
-          .from('GROCERY_STORE')
-          .insert([storeData])
-          .select()
-          .single();
-        
-        if (result.data) {
-          setStoreInfo(result.data);
-        }
-      }
+      // Use upsert to either insert or update based on storeId
+      const result = await supabase
+        .from('GROCERY_STORE')
+        .upsert(storeData, { 
+          onConflict: 'storeId',
+          ignoreDuplicates: false 
+        })
+        .select()
+        .single();
 
       if (result.error) {
         throw result.error;
+      }
+
+      // Update local state with the result
+      if (result.data) {
+        // Map database column names back to frontend field names
+        const mappedData = {
+          ...result.data,
+          store_address: result.data.location // Map location back to store_address
+        };
+        setStoreInfo(mappedData);
       }
 
       setAlertMessage('Store information saved successfully!');
@@ -217,6 +238,262 @@ const StoreDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error saving store info:', error);
       setAlertMessage('Error saving store information');
+      setShowAlert(true);
+    }
+  };
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setAlertMessage('Please select a valid image file');
+        setShowAlert(true);
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setAlertMessage('Image size must be less than 5MB');
+        setShowAlert(true);
+        return;
+      }
+      
+      setSelectedImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadImageToSupabase = async (): Promise<string | null> => {
+    if (!selectedImage || !currentUser) return null;
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      // Verify user session first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+
+      // Create unique filename (simplified - no folders)
+      const fileExt = selectedImage.name.split('.').pop();
+      const fileName = `store-${currentUser.id}-${Date.now()}.${fileExt}`;
+      
+      // Upload to Supabase storage with explicit options
+      const { error } = await supabase.storage
+        .from('Images')
+        .upload(fileName, selectedImage, {
+          cacheControl: '3600',
+          upsert: true, // Allow overwriting
+          contentType: selectedImage.type
+        });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('Images')
+        .getPublicUrl(fileName);
+      
+      setUploadProgress(100);
+      return urlData.publicUrl;
+      
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Bucket not found')) {
+          setAlertMessage('Storage bucket not found. Please create an "Images" bucket in Supabase Storage with public access.');
+        } else if (error.message.includes('row-level security policy')) {
+          setAlertMessage('Permission denied: Please ensure storage policies allow authenticated users to upload images.');
+        } else if (error.message.includes('not authenticated')) {
+          setAlertMessage('Authentication required: Please log in again to upload images.');
+        } else {
+          setAlertMessage(`Error uploading image: ${error.message}`);
+        }
+      } else {
+        setAlertMessage('Unknown error occurred while uploading image.');
+      }
+      
+      setShowAlert(true);
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const ensureStorageBucket = async () => {
+    try {
+      // Try to get bucket info
+      const { error } = await supabase.storage.getBucket('Images');
+      
+      if (error && error instanceof Error && error.message?.includes('not found')) {
+        // Create bucket if it doesn't exist
+        const { error: createError } = await supabase.storage.createBucket('Images', {
+          public: true,
+          allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+          fileSizeLimit: 5242880 // 5MB
+        });
+        
+        if (createError) {
+          console.error('Error creating bucket:', createError);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking storage bucket:', error);
+    }
+  };
+
+  const handleImageUpload = async () => {
+    if (!selectedImage) return;
+    
+    // Ensure bucket exists before upload
+    await ensureStorageBucket();
+    
+    const imageUrl = await uploadImageToSupabase();
+    if (imageUrl) {
+      setStoreInfo({...storeInfo, store_image_url: imageUrl});
+      setSelectedImage(null);
+      setImagePreview(null);
+      setAlertMessage('Image uploaded successfully!');
+      setShowAlert(true);
+    }
+  };
+
+  // Item image upload functions
+  const handleItemImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setAlertMessage('Please select a valid image file');
+        setShowAlert(true);
+        // Reset the input
+        event.target.value = '';
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setAlertMessage('Image size must be less than 5MB');
+        setShowAlert(true);
+        // Reset the input
+        event.target.value = '';
+        return;
+      }
+      
+      setSelectedItemImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setItemImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // File was deselected
+      setSelectedItemImage(null);
+      // Only clear preview if we're not editing an item with existing image
+      if (!editingItem?.item_image_url) {
+        setItemImagePreview(null);
+      } else {
+        // Restore existing image preview
+        setItemImagePreview(editingItem.item_image_url);
+      }
+    }
+  };
+
+  const uploadItemImageToSupabase = async (): Promise<string | null> => {
+    if (!selectedItemImage || !currentUser) return null;
+    
+    setIsItemUploading(true);
+    setItemUploadProgress(0);
+    
+    try {
+      // Verify user session first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+
+      // Create unique filename for item
+      const fileExt = selectedItemImage.name.split('.').pop();
+      const fileName = `item-${currentUser.id}-${Date.now()}.${fileExt}`;
+      
+      // Upload to Supabase storage with explicit options
+      const { error } = await supabase.storage
+        .from('Images')
+        .upload(fileName, selectedItemImage, {
+          cacheControl: '3600',
+          upsert: true, // Allow overwriting
+          contentType: selectedItemImage.type
+        });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('Images')
+        .getPublicUrl(fileName);
+      
+      setItemUploadProgress(100);
+      return urlData.publicUrl;
+      
+    } catch (error) {
+      console.error('Error uploading item image:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Bucket not found')) {
+          setAlertMessage('Storage bucket not found. Please create an "Images" bucket in Supabase Storage with public access.');
+        } else if (error.message.includes('row-level security policy')) {
+          setAlertMessage('Permission denied: Please ensure storage policies allow authenticated users to upload images.');
+        } else if (error.message.includes('not authenticated')) {
+          setAlertMessage('Authentication required: Please log in again to upload images.');
+        } else {
+          setAlertMessage(`Error uploading item image: ${error.message}`);
+        }
+      } else {
+        setAlertMessage('Unknown error occurred while uploading item image.');
+      }
+      
+      setShowAlert(true);
+      return null;
+    } finally {
+      setIsItemUploading(false);
+    }
+  };
+
+  const handleItemImageUpload = async () => {
+    if (!selectedItemImage) return;
+    
+    // Ensure bucket exists before upload
+    await ensureStorageBucket();
+    
+    const imageUrl = await uploadItemImageToSupabase();
+    if (imageUrl) {
+      // Update both the editing item and new item states
+      if (editingItem) {
+        setEditingItem({...editingItem, item_image_url: imageUrl});
+        setNewItem({...newItem, item_image_url: imageUrl}); // Also update newItem for saving
+      } else {
+        setNewItem({...newItem, item_image_url: imageUrl});
+      }
+      // Clear the selected file but keep the preview showing the uploaded image
+      setSelectedItemImage(null);
+      setItemImagePreview(imageUrl); // Show the uploaded image
+      setAlertMessage('Item image uploaded successfully!');
       setShowAlert(true);
     }
   };
@@ -244,15 +521,20 @@ const StoreDashboard: React.FC = () => {
         updated_at: new Date().toISOString()
       };
 
+      console.log('🖼️ Item data being saved:', itemData);
+      console.log('📸 Image URL in data:', itemData.item_image_url);
+
       let result;
       if (editingItem) {
         // Update existing item
+        console.log('🔄 Updating existing item with ID:', editingItem.storeItemId);
         result = await supabase
           .from('ITEMS_IN_STORE')
           .update(itemData)
-          .eq('storeitemid', editingItem.storeitemid);
+          .eq('storeItemId', editingItem.storeItemId);
       } else {
         // Create new item
+        console.log('➕ Creating new item');
         result = await supabase
           .from('ITEMS_IN_STORE')
           .insert([itemData]);
@@ -273,6 +555,8 @@ const StoreDashboard: React.FC = () => {
         price: 0,
         availability: 0,
         category: '',
+        unit: '',
+        brand: '',
         storeId: resetStoreId || 0
       });
       
@@ -291,7 +575,7 @@ const StoreDashboard: React.FC = () => {
       const { error } = await supabase
         .from('ITEMS_IN_STORE')
         .delete()
-        .eq('storeitemid', itemId);
+        .eq('storeItemId', itemId);
 
       if (error) {
         throw error;
@@ -312,6 +596,11 @@ const StoreDashboard: React.FC = () => {
   const openEditItem = (item: StockItem) => {
     setEditingItem(item);
     setNewItem({ ...item });
+    // Reset item image states but show existing image if available
+    setSelectedItemImage(null);
+    setItemImagePreview(item.item_image_url || null); // Show existing image as preview
+    setIsItemUploading(false);
+    setItemUploadProgress(0);
     setIsItemModalOpen(true);
   };
 
@@ -324,9 +613,30 @@ const StoreDashboard: React.FC = () => {
       price: 0,
       availability: 0,
       category: '',
+      unit: '',
+      brand: '',
       storeId: addItemStoreId || 0
     });
+    // Reset item image states
+    setSelectedItemImage(null);
+    setItemImagePreview(null);
+    setIsItemUploading(false);
+    setItemUploadProgress(0);
     setIsItemModalOpen(true);
+  };
+
+  const closeItemModal = () => {
+    setIsItemModalOpen(false);
+    // Reset item image states
+    setSelectedItemImage(null);
+    setItemImagePreview(null);
+    setIsItemUploading(false);
+    setItemUploadProgress(0);
+    // Clear the file input
+    const fileInput = document.getElementById('item-image-input') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
   };
 
   const handleLogout = async () => {
@@ -427,8 +737,25 @@ const StoreDashboard: React.FC = () => {
               <p>{storeInfo.store_email || 'Not set'}</p>
             </IonItem>
             <IonItem>
-              <IonLabel position="stacked">Store Image URL</IonLabel>
-              <p>{storeInfo.store_image_url || 'Not set'}</p>
+              <IonLabel position="stacked">Store Image</IonLabel>
+              {storeInfo.store_image_url ? (
+                <div style={{ width: '100%', padding: '10px 0' }}>
+                  <img 
+                    src={storeInfo.store_image_url} 
+                    alt="Store" 
+                    style={{ 
+                      width: '100%', 
+                      maxWidth: '200px', 
+                      height: '120px', 
+                      objectFit: 'cover', 
+                      borderRadius: '8px',
+                      border: '1px solid #ddd'
+                    }} 
+                  />
+                </div>
+              ) : (
+                <p>No image uploaded</p>
+              )}
             </IonItem>
             <IonButton 
               expand="block" 
@@ -457,15 +784,28 @@ const StoreDashboard: React.FC = () => {
       
       <IonList>
         {stockItems.map((item) => (
-          <IonCard key={item.storeitemid}>
+          <IonCard key={item.storeItemId}>
             <IonCardContent>
               <div className="stock-item">
+                <div className="item-image-preview">
+                  {item.item_image_url ? (
+                    <img 
+                      src={item.item_image_url} 
+                      alt={item.name}
+                      className="stock-item-image"
+                    />
+                  ) : (
+                    <div className="stock-item-placeholder">
+                      <IonIcon icon={cube} />
+                    </div>
+                  )}
+                </div>
                 <div className="item-info">
                   <h3>{item.name}</h3>
                   <p>{item.description}</p>
                   <div className="item-details">
-                    <span className="price">${item.price}</span>
-                    <span className="quantity">Qty: {item.availability}</span>
+                    <span className="price">₱{item.price} / {item.unit || 'pcs'}</span>
+                    <span className="quantity">Qty: {item.availability} {item.unit || 'pcs'}</span>
                     <span className="category">{item.category}</span>
                   </div>
                 </div>
@@ -479,7 +819,7 @@ const StoreDashboard: React.FC = () => {
                   <IonButton 
                     fill="clear" 
                     color="danger"
-                    onClick={() => deleteStockItem(item.storeitemid!)}
+                    onClick={() => deleteStockItem(item.storeItemId!)}
                   >
                     <IonIcon icon={trash} />
                   </IonButton>
@@ -580,13 +920,74 @@ const StoreDashboard: React.FC = () => {
                 />
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Store Image URL</IonLabel>
-                <IonInput
-                  value={storeInfo.store_image_url}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, store_image_url: e.detail.value!})}
-                  placeholder="Enter store image URL"
-                  type="url"
-                />
+                <IonLabel position="stacked">Store Image</IonLabel>
+                <div style={{ width: '100%', padding: '10px 0' }}>
+                  {/* Current Image Preview */}
+                  {(storeInfo.store_image_url || imagePreview) && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <img 
+                        src={imagePreview || storeInfo.store_image_url} 
+                        alt="Store preview" 
+                        style={{ 
+                          width: '100%', 
+                          maxWidth: '200px', 
+                          height: '150px', 
+                          objectFit: 'cover', 
+                          borderRadius: '8px',
+                          border: '1px solid #ddd'
+                        }} 
+                      />
+                    </div>
+                  )}
+                  
+                  {/* File Input */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    style={{ 
+                      width: '100%', 
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      marginBottom: '10px'
+                    }}
+                  />
+                  
+                  {/* Upload Progress */}
+                  {isUploading && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <IonProgressBar value={uploadProgress / 100}></IonProgressBar>
+                      <p style={{ textAlign: 'center', margin: '5px 0', fontSize: '12px' }}>
+                        Uploading... {uploadProgress}%
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Upload Button */}
+                  {selectedImage && !isUploading && (
+                    <IonButton 
+                      expand="block" 
+                      fill="outline" 
+                      onClick={handleImageUpload}
+                      style={{ marginTop: '10px' }}
+                    >
+                      Upload Image
+                    </IonButton>
+                  )}
+                  
+                  {/* Current URL Display */}
+                  {storeInfo.store_image_url && (
+                    <p style={{ 
+                      fontSize: '12px', 
+                      color: '#666', 
+                      marginTop: '10px',
+                      wordBreak: 'break-all'
+                    }}>
+                      Current: {storeInfo.store_image_url}
+                    </p>
+                  )}
+                </div>
               </IonItem>
               <IonButton expand="block" onClick={saveStoreInfo} className="save-button">
                 <IonIcon icon={save} slot="start" />
@@ -597,7 +998,7 @@ const StoreDashboard: React.FC = () => {
         </IonModal>
 
         {/* Stock Item Modal */}
-        <IonModal isOpen={isItemModalOpen} onDidDismiss={() => setIsItemModalOpen(false)}>
+        <IonModal isOpen={isItemModalOpen} onDidDismiss={closeItemModal}>
           <IonHeader>
             <IonToolbar>
               <IonTitle>{editingItem ? 'Update Item' : 'Add New Item'}</IonTitle>
@@ -628,11 +1029,21 @@ const StoreDashboard: React.FC = () => {
                 />
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Brand Name</IonLabel>
+                <IonInput
+                  value={newItem.brand}
+                  onIonInput={(e) => setNewItem({...newItem, brand: e.detail.value!})}
+                  placeholder="Enter brand name"
+                />
+              </IonItem>
+              <IonItem>
                 <IonLabel position="stacked">Category</IonLabel>
                 <IonSelect
                   value={newItem.category}
                   onIonChange={(e) => setNewItem({...newItem, category: e.detail.value})}
                   placeholder="Select category"
+                  interface="popover"
+                  fill="outline"
                 >
                   {categories.map((category) => (
                     <IonSelectOption key={category} value={category}>
@@ -651,6 +1062,24 @@ const StoreDashboard: React.FC = () => {
                 />
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Unit</IonLabel>
+                <IonSelect
+                  value={newItem.unit}
+                  onIonChange={(e) => setNewItem({...newItem, unit: e.detail.value})}
+                  placeholder="Select unit"
+                  interface="popover"
+                  fill="outline"
+                >
+                  <IonSelectOption value="kg">KG</IonSelectOption>
+                  <IonSelectOption value="pcs">Pcs</IonSelectOption>
+                  <IonSelectOption value="liter">Liter</IonSelectOption>
+                  <IonSelectOption value="pack">Pack</IonSelectOption>
+                  <IonSelectOption value="grams">g(grams)</IonSelectOption>
+                  <IonSelectOption value="bottle">bottle</IonSelectOption>
+                  <IonSelectOption value="milliliters">ml</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem>
                 <IonLabel position="stacked">Quantity</IonLabel>
                 <IonInput
                   type="number"
@@ -660,13 +1089,91 @@ const StoreDashboard: React.FC = () => {
                 />
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Item Image URL</IonLabel>
-                <IonInput
-                  value={newItem.item_image_url}
-                  onIonInput={(e) => setNewItem({...newItem, item_image_url: e.detail.value!})}
-                  placeholder="Enter image URL (optional)"
-                  type="url"
-                />
+                <IonLabel position="stacked">Item Image</IonLabel>
+                <div style={{ width: '100%', padding: '10px 0' }}>
+                  {/* File Input */}
+                  <input
+                    id="item-image-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleItemImageSelect}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      marginBottom: '10px'
+                    }}
+                  />
+                  
+                  {/* Image Preview - Show existing image or new selection */}
+                  {itemImagePreview && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <img 
+                        src={itemImagePreview} 
+                        alt="Item preview" 
+                        style={{
+                          width: '100%',
+                          maxWidth: '200px',
+                          height: '120px',
+                          objectFit: 'cover',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          display: 'block',
+                          margin: '0 auto'
+                        }}
+                      />
+                      {/* Show if this is existing image or new selection */}
+                      <p style={{ 
+                        textAlign: 'center', 
+                        fontSize: '12px', 
+                        color: '#666', 
+                        marginTop: '5px' 
+                      }}>
+                        {selectedItemImage ? 'New image selected' : 'Current image'}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Upload Progress */}
+                  {isItemUploading && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <IonProgressBar value={itemUploadProgress / 100}></IonProgressBar>
+                      <p style={{ textAlign: 'center', margin: '5px 0', fontSize: '12px' }}>
+                        Uploading... {itemUploadProgress}%
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Upload Button - Show when new image is selected */}
+                  {selectedItemImage && !isItemUploading && (
+                    <IonButton 
+                      expand="block" 
+                      fill="outline" 
+                      onClick={handleItemImageUpload}
+                      style={{ marginBottom: '10px' }}
+                    >
+                      Upload New Image
+                    </IonButton>
+                  )}
+                  
+                  {/* Remove Image Button - Show when editing and image exists */}
+                  {editingItem && itemImagePreview && !selectedItemImage && (
+                    <IonButton 
+                      expand="block" 
+                      fill="clear" 
+                      color="danger"
+                      onClick={() => {
+                        setItemImagePreview(null);
+                        setEditingItem({...editingItem, item_image_url: ''});
+                        setNewItem({...newItem, item_image_url: ''});
+                      }}
+                      style={{ marginBottom: '10px' }}
+                    >
+                      Remove Current Image
+                    </IonButton>
+                  )}
+                </div>
               </IonItem>
               <IonButton expand="block" onClick={saveStockItem} className="save-button">
                 <IonIcon icon={save} slot="start" />

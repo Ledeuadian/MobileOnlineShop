@@ -64,9 +64,41 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  background: #ffffff !important;
-  padding: 16px;
+}
+
+.item-image-preview {
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
   border-radius: 8px;
+  overflow: hidden;
+  background-color: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stock-item-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  transition: transform 0.2s ease;
+}
+
+.stock-item-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #e9ecef;
+  color: #6c757d;
+  font-size: 24px;
+}
+
+.item-image-preview:hover .stock-item-image {
+  transform: scale(1.05);
 }
 
 .item-info {
@@ -75,13 +107,13 @@
 
 .item-info h3 {
   margin: 0 0 8px 0;
-  color: #1a1a1a !important;
+  color: var(--ion-color-dark);
   font-weight: 600;
 }
 
 .item-info p {
   margin: 0 0 12px 0;
-  color: #5a5a5a !important;
+  color: var(--ion-color-medium);
   font-size: 14px;
 }
 
@@ -99,21 +131,18 @@
 }
 
 .price {
-  background: #d4edda;
-  color: #155724 !important;
-  border: 1px solid #c3e6cb;
+  background: var(--ion-color-success-tint);
+  color: var(--ion-color-success-shade);
 }
 
 .quantity {
-  background: #fff3cd;
-  color: #856404 !important;
-  border: 1px solid #ffeaa7;
+  background: var(--ion-color-warning-tint);
+  color: var(--ion-color-warning-shade);
 }
 
 .category {
-  background: #cce7ff;
-  color: #0056b3 !important;
-  border: 1px solid #a6d0ff;
+  background: var(--ion-color-primary-tint);
+  color: var(--ion-color-primary-shade);
 }
 
 .item-actions {
@@ -129,6 +158,59 @@
   --background: transparent;
   --border-style: none;
   margin-bottom: 8px;
+}
+
+/* Improve select field styling */
+.modal-content ion-select {
+  --background: transparent;
+  --color: var(--ion-color-dark);
+  --placeholder-color: var(--ion-color-medium);
+  --padding-start: 12px;
+  --padding-end: 12px;
+  margin-top: 8px;
+  font-size: 16px;
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 8px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+/* Ensure labels are properly positioned above selects */
+.modal-content ion-item {
+  --padding-start: 16px;
+  --padding-end: 16px;
+  --inner-padding-end: 0;
+  --inner-padding-start: 0;
+  --border-width: 0 0 1px 0;
+  --border-color: var(--ion-color-light-shade);
+  padding-bottom: 8px;
+}
+
+/* Style for stacked labels */
+.modal-content ion-label[position="stacked"] {
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--ion-color-medium-shade);
+  font-size: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure select dropdown has proper styling */
+.modal-content ion-select::part(container) {
+  background: transparent;
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 8px;
+}
+
+.modal-content ion-select::part(text) {
+  color: var(--ion-color-dark);
+  font-size: 16px;
+}
+
+.modal-content ion-select::part(icon) {
+  color: var(--ion-color-medium);
 }
 
 .save-button {
@@ -149,13 +231,24 @@
   }
   
   .stock-item {
-    flex-direction: column;
+    flex-direction: row;
     gap: 12px;
+    align-items: center;
+  }
+  
+  .item-image-preview {
+    width: 60px;
+    height: 60px;
+    min-width: 60px;
+  }
+  
+  .stock-item-placeholder {
+    font-size: 20px;
   }
   
   .item-actions {
-    align-self: stretch;
-    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
   }
 }
 
@@ -175,7 +268,6 @@ ion-card {
   margin: 8px 0;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  background: #ffffff !important;
 }
 
 ion-card-header {
@@ -185,11 +277,6 @@ ion-card-header {
 ion-card-title {
   color: var(--ion-color-dark);
   font-weight: 600;
-}
-
-ion-card-content {
-  background: #ffffff !important;
-  color: #1a1a1a !important;
 }
 
 /* Button styling */
@@ -245,49 +332,29 @@ ion-input, ion-textarea, ion-select {
   --background: rgba(220, 53, 69, 0.1);
 }
 
-/* Ensure readability in all themes */
-.stock-content ion-card,
-.stock-content .stock-item {
-  background: #ffffff !important;
+/* Simple text readability improvements */
+.stock-item .item-info h3 {
+  color: var(--ion-color-dark);
+  font-weight: 600;
 }
 
-.stock-content .item-info h3,
-.stock-content .item-info p,
-.stock-content .item-details span {
-  color: #1a1a1a !important;
+.stock-item .item-info p {
+  color: var(--ion-color-step-600);
 }
 
-/* Dark mode specific overrides */
-@media (prefers-color-scheme: dark) {
-  .stock-content ion-card,
-  .stock-content .stock-item {
-    background: #2a2a2a !important;
-    border: 1px solid #404040;
-  }
-  
-  .stock-content .item-info h3 {
-    color: #ffffff !important;
-  }
-  
-  .stock-content .item-info p {
-    color: #cccccc !important;
-  }
-  
-  .price {
-    background: #1e4620;
-    color: #90ee90 !important;
-    border: 1px solid #2d5a2f;
-  }
-  
-  .quantity {
-    background: #4a3c1a;
-    color: #ffd700 !important;
-    border: 1px solid #5c4a20;
-  }
-  
-  .category {
-    background: #1a3d5c;
-    color: #87ceeb !important;
-    border: 1px solid #2d5a8a;
-  }
+.stock-item .item-details .price {
+  background: rgba(40, 167, 69, 0.1);
+  color: var(--ion-color-success-shade);
 }
+
+.stock-item .item-details .quantity {
+  background: rgba(255, 193, 7, 0.1);
+  color: var(--ion-color-warning-shade);
+}
+
+.stock-item .item-details .category {
+  background: rgba(0, 123, 255, 0.1);
+  color: var(--ion-color-primary-shade);
+}
+
+

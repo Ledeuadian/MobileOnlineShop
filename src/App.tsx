@@ -31,13 +31,18 @@ import './theme/variables.css';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Home from './pages/Home';
 import AccountConfirmation from './components/AccountConfirmation';
 import OAuthCallback from './components/OAuthCallback';
 import PendingApproval from './pages/PendingApproval';
-import AdminDashboard from './pages/AdminDashboard';
-import StoreDashboard from './pages/StoreDashboard';
-import DTIDashboard from './pages/DTIDashboard';
+
+// Lazy load heavy dashboard components
+const Home = React.lazy(() => import('./pages/Home'));
+const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
+const StoreDashboard = React.lazy(() => import('./pages/StoreDashboard'));
+const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
+const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
+const Cart = React.lazy(() => import('./pages/Cart'));
+const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 
 setupIonicReact();
@@ -84,6 +89,7 @@ const RedirectHandler: React.FC = () => {
           }
         } else {
           console.log('No authenticated user, redirecting to login');
+          console.log('History object:', history);
           history.push('/login');
         }
       } catch (error) {
@@ -95,20 +101,8 @@ const RedirectHandler: React.FC = () => {
     checkAuth();
   }, [history]);
   
-  return (
-    <IonPage>
-      <IonContent>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          height: '100%' 
-        }}>
-          <IonSpinner name="crescent" />
-        </div>
-      </IonContent>
-    </IonPage>
-  );
+  // Return null to avoid showing any loading UI
+  return null;
 };
 
 const ProtectedAdminRoute: React.FC = () => {
@@ -164,7 +158,24 @@ const ProtectedAdminRoute: React.FC = () => {
     );
   }
 
-  return isAuthorized ? <AdminDashboard /> : null;
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <AdminDashboard />
+    </React.Suspense>
+  ) : null;
 };
 
 const ProtectedStoreRoute: React.FC = () => {
@@ -220,7 +231,24 @@ const ProtectedStoreRoute: React.FC = () => {
     );
   }
 
-  return isAuthorized ? <StoreDashboard /> : null;
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <StoreDashboard />
+    </React.Suspense>
+  ) : null;
 };
 
 const ProtectedDTIRoute: React.FC = () => {
@@ -276,7 +304,24 @@ const ProtectedDTIRoute: React.FC = () => {
     );
   }
 
-  return isAuthorized ? <DTIDashboard /> : null;
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <DTIDashboard />
+    </React.Suspense>
+  ) : null;
 };
 
 const ProtectedHomeRoute: React.FC = () => {
@@ -325,7 +370,222 @@ const ProtectedHomeRoute: React.FC = () => {
     );
   }
 
-  return isAuthorized ? <Home /> : null;
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <Home />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedCategoryRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        console.log('🟢 Session found for Category route:', session.user.email);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking category authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <CategoryProducts />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedCartRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        console.log('🟢 Session found for Cart route:', session.user.email);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking cart authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <Cart />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedGroceryListRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        console.log('🟢 Session found for Grocery List route:', session.user.email);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking grocery list authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <GroceryList />
+    </React.Suspense>
+  ) : null;
 };
 
 const App: React.FC = () => {
@@ -397,6 +657,15 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/home">
             <ProtectedHomeRoute />
+          </Route>
+          <Route exact path="/category/:category">
+            <ProtectedCategoryRoute />
+          </Route>
+          <Route exact path="/cart">
+            <ProtectedCartRoute />
+          </Route>
+          <Route exact path="/grocery-list">
+            <ProtectedGroceryListRoute />
           </Route>
           <Route exact path="/verified">
             <AccountConfirmation />

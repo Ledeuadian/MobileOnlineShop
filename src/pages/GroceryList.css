@@ -1,0 +1,315 @@
+.grocery-list-container {
+  padding: 1rem;
+  padding-bottom: 120px; /* Space for bottom nav */
+}
+
+.grocery-header {
+  margin-bottom: 1rem;
+}
+
+.grocery-header h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 0 0 0.5rem 0;
+  color: var(--ion-color-dark);
+}
+
+.item-count {
+  color: var(--ion-color-medium);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.grocery-search {
+  margin-bottom: 1rem;
+  --background: var(--ion-color-light);
+  --border-radius: 12px;
+}
+
+.grocery-items-list {
+  background: transparent;
+}
+
+.grocery-item {
+  --background: var(--ion-color-light);
+  --border-radius: 12px;
+  margin-bottom: 0.5rem;
+  --padding-start: 0;
+  --padding-end: 0;
+  --inner-padding-start: 1rem;
+  --inner-padding-end: 1rem;
+}
+
+.grocery-item.checked {
+  --background: #f0f0f0;
+  opacity: 0.7;
+}
+
+.item-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 1rem 0;
+}
+
+.item-details {
+  flex: 1;
+}
+
+.item-name {
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 0 0 0.25rem 0;
+  color: var(--ion-color-dark);
+}
+
+.grocery-item.checked .item-name {
+  text-decoration: line-through;
+  color: var(--ion-color-medium);
+}
+
+.item-info {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.item-quantity {
+  color: var(--ion-color-medium);
+  font-size: 0.9rem;
+}
+
+.item-brand {
+  color: var(--ion-color-medium);
+  font-size: 0.9rem;
+}
+
+.item-checkbox {
+  --size: 24px;
+  --checkmark-color: white;
+  --background-checked: var(--ion-color-primary);
+  --border-color-checked: var(--ion-color-primary);
+}
+
+/* Bottom Navigation */
+.bottom-nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--ion-color-light);
+  z-index: 1000;
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-icon {
+  font-size: 1.5rem;
+  color: var(--ion-color-medium);
+}
+
+.nav-btn:hover .nav-icon {
+  color: var(--ion-color-primary);
+}
+
+.cart-nav-btn {
+  position: relative;
+}
+
+.cart-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Add FAB */
+.add-fab {
+  margin-bottom: 80px; /* Above bottom nav */
+}
+
+/* Add Item Modal Styles */
+.modal-content {
+  padding: 1.5rem;
+}
+
+.add-item-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 3rem; /* Add top margin to center the fields better */
+}
+
+.form-field {
+  position: relative;
+}
+
+.form-input {
+  --background: var(--ion-color-light);
+  --border-radius: 12px;
+  --padding-start: 1rem;
+  --padding-end: 1rem;
+  --color: var(--ion-color-dark);
+  height: 56px;
+  font-size: 1rem;
+}
+
+.form-input input {
+  border: none;
+  outline: none;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+}
+
+.size-field {
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink */
+}
+
+.measurement-field {
+  flex: 1;
+  position: relative;
+  min-width: 0; /* Allow flex item to shrink */
+}
+
+.form-select {
+  --background: var(--ion-color-light);
+  --border-radius: 12px;
+  --padding-start: 1rem;
+  --padding-end: 2.5rem;
+  --color: var(--ion-color-dark);
+  height: 56px;
+  font-size: 1rem;
+}
+
+.select-arrow {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ion-color-medium);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Modal header styling */
+ion-modal ion-header ion-toolbar {
+  --background: var(--ion-color-primary);
+  --color: white;
+}
+
+ion-modal ion-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+ion-modal ion-button {
+  --color: white;
+}
+
+/* Form input focus states */
+.form-input.ion-focused {
+  --border-color: var(--ion-color-primary);
+  --border-width: 2px;
+}
+
+.form-select.ion-focused {
+  --border-color: var(--ion-color-primary);
+  --border-width: 2px;
+}
+
+/* Add Button Styles */
+.form-button-container {
+  margin-top: 2rem;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.add-button {
+  --background: var(--ion-color-primary);
+  --color: white;
+  --border-radius: 12px;
+  height: 44px;
+  width: 50%;
+  align-self: center;
+  text-transform: none;
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.add-button:disabled {
+  --background: var(--ion-color-light);
+  --color: var(--ion-color-medium);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .grocery-list-container {
+    padding: 0.75rem;
+    padding-bottom: 100px;
+  }
+  
+  .grocery-header h2 {
+    font-size: 1.3rem;
+  }
+  
+  .item-name {
+    font-size: 1rem;
+  }
+  
+  .bottom-nav-bar {
+    padding: 0.5rem 0;
+  }
+
+  .modal-content {
+    padding: 1rem;
+  }
+
+  .add-item-form {
+    margin-top: 2rem; /* Reduce top margin on mobile */
+  }
+
+  .form-row {
+    gap: 0.75rem; /* Keep horizontal layout on mobile too */
+  }
+
+  .size-field,
+  .measurement-field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .form-button-container {
+    margin-top: 1.5rem;
+  }
+
+  .add-button {
+    height: 40px;
+    font-size: 0.95rem;
+  }
+}
