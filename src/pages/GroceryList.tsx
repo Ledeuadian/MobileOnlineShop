@@ -19,7 +19,8 @@ import {
   IonModal,
   IonInput,
   IonSelect,
-  IonSelectOption
+  IonSelectOption,
+  IonSpinner
 } from '@ionic/react';
 import { 
   arrowBackOutline, 
@@ -27,7 +28,6 @@ import {
   personOutline, 
   addOutline,
   storefrontOutline,
-  closeOutline,
   checkmarkOutline,
   chevronDownOutline
 } from 'ionicons/icons';
@@ -40,19 +40,14 @@ interface GroceryItem {
   description?: string;
   quantity?: string;
   brand?: string;
+  variant?: string;
+  unit?: string;
   checked: boolean;
 }
 
 const GroceryList: React.FC = () => {
   const history = useHistory();
-  const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([
-    { id: 1, name: 'Cooking oil', quantity: '1L', brand: 'Golden fiesta', checked: false },
-    { id: 2, name: 'Toothpaste', brand: 'Colgate', checked: false },
-    { id: 3, name: 'Shampoo', checked: false },
-    { id: 4, name: 'Soy sauce', quantity: '700ml', checked: false },
-    { id: 5, name: 'Vinegar', brand: 'Datu puti', checked: false },
-    { id: 6, name: 'Koko Krunch', quantity: '170g', brand: 'Nestle', checked: false }
-  ]);
+  const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -60,13 +55,72 @@ const GroceryList: React.FC = () => {
   const [newItemBrand, setNewItemBrand] = useState('');
   const [newItemSize, setNewItemSize] = useState('');
   const [newItemMeasurement, setNewItemMeasurement] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Function to fetch product types from database
+  const fetchProductTypes = async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching product types from PRODUCT_TYPE table...');
+      
+      const { data, error } = await supabase
+        .from('PRODUCT_TYPE')
+        .select('productTypeId, Name, Brand, Variant, Unit')
+        .order('Name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching product types:', error);
+        // Fallback to empty array if there's an error
+        setGroceryItems([]);
+        return;
+      }
+
+      console.log(`Fetched ${data?.length || 0} product types from database`);
+      console.log('Sample data:', data?.slice(0, 3));
+
+      // Remove duplicates based on Name, Brand, Variant, Unit combination
+      const uniqueProducts = data.filter((product, index, self) => 
+        index === self.findIndex(p => 
+          p.Name === product.Name && 
+          p.Brand === product.Brand && 
+          p.Variant === product.Variant && 
+          p.Unit === product.Unit
+        )
+      );
+
+      console.log(`After deduplication: ${uniqueProducts.length} unique products`);
+
+      const formattedItems: GroceryItem[] = uniqueProducts.map(item => ({
+        id: item.productTypeId,
+        name: item.Name,
+        brand: item.Brand || undefined,
+        variant: item.Variant || undefined,
+        unit: item.Unit || undefined,
+        checked: false
+      }));
+
+      setGroceryItems(formattedItems);
+    } catch (error) {
+      console.error('Error loading product types:', error);
+      setGroceryItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadCartCount = async () => {
       const count = await getCartItemCount();
       setCartItemCount(count);
     };
-    loadCartCount();
+
+    const loadData = async () => {
+      await Promise.all([
+        fetchProductTypes(),
+        loadCartCount()
+      ]);
+    };
+    loadData();
   }, []);
 
   const getCartItemCount = async () => {
@@ -109,7 +163,9 @@ const GroceryList: React.FC = () => {
 
   const filteredItems = groceryItems.filter(item =>
     item.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    (item.brand && item.brand.toLowerCase().includes(searchText.toLowerCase()))
+    item.brand?.toLowerCase().includes(searchText.toLowerCase()) ||
+    item.variant?.toLowerCase().includes(searchText.toLowerCase()) ||
+    item.unit?.toLowerCase().includes(searchText.toLowerCase())
   );
 
   const toggleItemCheck = (id: number) => {
@@ -235,31 +291,44 @@ const GroceryList: React.FC = () => {
           />
 
           {/* Grocery Items List */}
-          <IonList className="grocery-items-list">
-            {filteredItems.map((item) => (
-              <IonItem 
-                key={item.id} 
-                className={`grocery-item ${item.checked ? 'checked' : ''}`}
-                lines="none"
-              >
-                <div className="item-content">
-                  <div className="item-details">
-                    <h3 className="item-name">{item.name}</h3>
-                    <div className="item-info">
-                      {item.quantity && <span className="item-quantity">{item.quantity}</span>}
-                      {item.brand && <span className="item-brand">{item.brand}</span>}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+              <IonSpinner name="crescent" />
+            </div>
+          ) : (
+            <IonList className="grocery-items-list">
+              {filteredItems.map((item) => (
+                <IonItem 
+                  key={item.id} 
+                  className={`grocery-item ${item.checked ? 'checked' : ''}`}
+                  lines="none"
+                >
+                  <div className="item-content">
+                    <div className="item-details">
+                      <h3 className="item-name">{item.name}</h3>
+                      <div className="item-info">
+                        {item.brand && <span className="item-brand">{item.brand}</span>}
+                        {item.variant && <span className="item-variant">{item.variant}</span>}
+                        {item.unit && <span className="item-unit">{item.unit}</span>}
+                        {item.quantity && <span className="item-quantity">{item.quantity}</span>}
+                      </div>
                     </div>
+                    <IonCheckbox
+                      checked={item.checked}
+                      onIonChange={() => toggleItemCheck(item.id)}
+                      slot="end"
+                      className="item-checkbox"
+                    />
                   </div>
-                  <IonCheckbox
-                    checked={item.checked}
-                    onIonChange={() => toggleItemCheck(item.id)}
-                    slot="end"
-                    className="item-checkbox"
-                  />
+                </IonItem>
+              ))}
+              {!loading && filteredItems.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                  {searchText ? 'No items found matching your search' : 'No grocery items available'}
                 </div>
-              </IonItem>
-            ))}
-          </IonList>
+              )}
+            </IonList>
+          )}
         </div>
 
         {/* Bottom Navigation Bar */}

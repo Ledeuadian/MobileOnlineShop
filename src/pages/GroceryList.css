@@ -85,6 +85,20 @@
   font-size: 0.9rem;
 }
 
+.item-variant {
+  color: var(--ion-color-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.item-unit {
+  color: var(--ion-color-medium);
+  font-size: 0.9rem;
+  background: var(--ion-color-light-tint);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
 .item-checkbox {
   --size: 24px;
   --checkmark-color: white;
