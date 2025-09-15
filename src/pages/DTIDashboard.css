@@ -73,6 +73,22 @@
   margin: 0;
 }
 
+/* Clickable Cards */
+.clickable-card {
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.clickable-card:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
 /* DTI Sections */
 .dti-section {
   margin: 2rem 0;
@@ -430,6 +446,42 @@
   box-shadow: 0 0 0 1px #3182ce;
 }
 
+/* Price Comparison Styles */
+.price-comparison {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.srp-price-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Color coding for price comparison badges */
+ion-badge[color="success"] {
+  --background: #28a745;
+  --color: white;
+}
+
+ion-badge[color="danger"] {
+  --background: #dc3545;
+  --color: white;
+}
+
+ion-badge[color="warning"] {
+  --background: #ffc107;
+  --color: #212529;
+}
+
+ion-badge[color="secondary"] {
+  --background: #6c757d;
+  --color: white;
+}
+
 /* Responsive adjustments for SRP */
 @media (max-width: 768px) {
   .srp-pricing-item {
@@ -450,5 +502,20 @@
   .srp-price-input {
     width: 100%;
     text-align: left;
+  }
+
+  .price-comparison {
+    align-items: flex-start;
+  }
+
+  .item-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .srp-price-info {
+    flex-wrap: wrap;
+    gap: 4px;
   }
 }

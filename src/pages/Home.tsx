@@ -54,6 +54,16 @@ const Home: React.FC = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
 
+  // Helper function to validate URLs
+  const isValidUrl = (string: string): boolean => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     const checkAuthAndRedirect = async () => {
       const { data } = await supabase.auth.getSession();
@@ -113,6 +123,17 @@ const Home: React.FC = () => {
     checkAuthAndRedirect();
     loadFeaturedProducts();
     loadCartCount();
+
+    // Also refresh cart count when window gets focus (user returns to tab/app)
+    const handleFocus = () => {
+      loadCartCount();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [history]);
 
   // Categories based on exact database categories
@@ -156,28 +177,44 @@ const Home: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
-      if (userError || !userData) return 0;
+      if (userError || !userData) {
+        console.warn('Error getting user data for cart count:', userError);
+        return 0;
+      }
 
       // Get user's cart
       const { data: cart, error: cartError } = await supabase
         .from('CARTS')
         .select('cartId')
         .eq('userId', userData.userId)
-        .single();
+        .maybeSingle();
 
-      if (cartError || !cart) return 0;
+      if (cartError) {
+        console.warn('Error getting cart for count:', cartError);
+        return 0;
+      }
+      
+      if (!cart) {
+        console.log('No cart found for user');
+        return 0;
+      }
 
-      // Get count of unique items in cart (not total quantity)
+      // Get total quantity of all items in cart
       const { data: cartItems, error: itemsError } = await supabase
         .from('CART_ITEMS')
-        .select('cartItemId')
+        .select('quantity')
         .eq('cartId', cart.cartId);
 
-      if (itemsError) return 0;
+      if (itemsError) {
+        console.warn('Error getting cart items for count:', itemsError);
+        return 0;
+      }
 
-      return cartItems?.length || 0;
+      // Sum up all quantities for total count
+      const totalQuantity = cartItems?.reduce((total, item) => total + (item.quantity || 0), 0) || 0;
+      return totalQuantity;
     } catch (error) {
       console.error('Error counting cart items:', error);
       return 0;
@@ -378,13 +415,24 @@ const Home: React.FC = () => {
             {featuredProducts.map((product) => (
               <IonCard key={product.storeItemId} className="product-card">
                 <div className="product-image">
-                  {product.item_image_url ? (
-                    <img src={product.item_image_url} alt={product.name} />
-                  ) : (
-                    <div className="product-placeholder">
-                      🛒
-                    </div>
-                  )}
+                  {product.item_image_url && isValidUrl(product.item_image_url) ? (
+                    <img 
+                      src={product.item_image_url} 
+                      alt={product.name}
+                      onError={(e) => {
+                        // Hide broken image and show placeholder
+                        e.currentTarget.style.display = 'none';
+                        const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (placeholder) placeholder.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className="product-placeholder" 
+                    style={{ display: product.item_image_url && isValidUrl(product.item_image_url) ? 'none' : 'flex' }}
+                  >
+                    🛒
+                  </div>
                   <IonButton 
                     fill="clear" 
                     className="wishlist-btn"

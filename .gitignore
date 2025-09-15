@@ -29,3 +29,22 @@ yarn-error.log*
 
 # Optional eslint cache
 .eslintcache
+
+# Temporary analysis and debugging files
+*_analysis.md
+*_debug.js
+*debug*.js
+*test*.js
+*check*.js
+*verify*.js
+*populate*.js
+analyze_*.sql
+debug_*.sql
+test_*.sql
+cleanup_*.sql
+*_fixes.md
+*_results.md
+
+# Supabase local development
+.env
+.env.local

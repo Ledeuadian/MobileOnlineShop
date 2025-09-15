@@ -58,6 +58,16 @@ const CategoryProducts: React.FC = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
   
+  // Helper function to validate URLs
+  const isValidUrl = (string: string): boolean => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  
   // Debug: Test database connection on component mount
   useEffect(() => {
     const quickTest = async () => {
@@ -163,7 +173,19 @@ const CategoryProducts: React.FC = () => {
       const count = await getCartItemCount();
       setCartItemCount(count);
     };
+    
     loadCartCount();
+
+    // Also refresh cart count when window gets focus (user returns to tab/app)
+    const handleFocus = () => {
+      loadCartCount();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const filteredProducts = products.filter(product =>
@@ -209,32 +231,48 @@ const CategoryProducts: React.FC = () => {
       if (!user) return 0;
 
       // Get userId from public.USER table
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
-      if (!userData) return 0;
+      if (userError || !userData) {
+        console.warn('Error getting user data for cart count:', userError);
+        return 0;
+      }
 
       // Get cart for this user
-      const { data: cart } = await supabase
+      const { data: cart, error: cartError } = await supabase
         .from('CARTS')
         .select('cartId')
         .eq('userId', userData.userId)
-        .single();
+        .maybeSingle();
 
-      if (!cart) return 0;
+      if (cartError) {
+        console.warn('Error getting cart for count:', cartError);
+        return 0;
+      }
+      
+      if (!cart) {
+        console.log('No cart found for user');
+        return 0;
+      }
 
-      // Get count of unique items in cart (not total quantity)
-      const { data: cartItems } = await supabase
+      // Get total quantity of all items in cart
+      const { data: cartItems, error: itemsError } = await supabase
         .from('CART_ITEMS')
-        .select('cartItemId')
+        .select('quantity')
         .eq('cartId', cart.cartId);
 
-      if (!cartItems) return 0;
+      if (itemsError || !cartItems) {
+        console.warn('Error getting cart items for count:', itemsError);
+        return 0;
+      }
 
-      return cartItems.length;
+      // Sum up all quantities for total count
+      const totalQuantity = cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
+      return totalQuantity;
     } catch (error) {
       console.error('Error getting cart item count:', error);
       return 0;
@@ -440,13 +478,24 @@ const CategoryProducts: React.FC = () => {
                   <IonCol size="6" key={product.storeItemId}>
                     <IonCard className="product-card">
                       <div className="product-image">
-                        {product.item_image_url ? (
-                          <img src={product.item_image_url} alt={product.name} />
-                        ) : (
-                          <div className="product-placeholder">
-                            {getCategoryIcon(product.category)}
-                          </div>
-                        )}
+                        {product.item_image_url && isValidUrl(product.item_image_url) ? (
+                          <img 
+                            src={product.item_image_url} 
+                            alt={product.name}
+                            onError={(e) => {
+                              // Hide broken image and show placeholder
+                              e.currentTarget.style.display = 'none';
+                              const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (placeholder) placeholder.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div 
+                          className="product-placeholder"
+                          style={{ display: product.item_image_url && isValidUrl(product.item_image_url) ? 'none' : 'flex' }}
+                        >
+                          {getCategoryIcon(product.category)}
+                        </div>
                         <IonButton 
                           fill="clear" 
                           className="wishlist-btn"

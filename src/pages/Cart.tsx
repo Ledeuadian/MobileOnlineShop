@@ -60,6 +60,16 @@ const Cart: React.FC = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [pendingChanges, setPendingChanges] = useState<Map<number, { quantity: number, subTotal: number }>>(new Map());
 
+  // Helper function to validate URLs
+  const isValidUrl = (string: string): boolean => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const loadCartItems = useCallback(async () => {
     try {
       setLoading(true);
@@ -87,9 +97,14 @@ const Cart: React.FC = () => {
         .from('CARTS')
         .select('cartId')
         .eq('userId', userData.userId)
-        .single();
+        .maybeSingle();
 
-      if (cartError || !cart) {
+      if (cartError) {
+        console.error('Error getting cart data:', cartError);
+        return;
+      }
+      
+      if (!cart) {
         console.log('No cart found for user');
         setCartItems([]);
         return;
@@ -121,10 +136,16 @@ const Cart: React.FC = () => {
           .from('ITEMS_IN_STORE')
           .select('name, description, price, unit, category, item_image_url, storeId')
           .eq('storeItemId', cartItem.storeItemId)
-          .single();
+          .maybeSingle();
 
         if (itemError) {
           console.error('Error loading item details:', itemError);
+          continue;
+        }
+
+        // If no item data found, skip this cart item
+        if (!itemData) {
+          console.warn(`Item with storeItemId ${cartItem.storeItemId} not found in ITEMS_IN_STORE`);
           continue;
         }
 
@@ -217,7 +238,10 @@ const Cart: React.FC = () => {
 
   const handleBackClick = async () => {
     await savePendingChanges();
-    history.goBack();
+    
+    // Always navigate to home page to ensure user can get back
+    // This is more reliable than trying to detect if there's history
+    history.push('/home');
   };
 
   const updateQuantity = (cartItemId: number, newQuantity: number, price: number) => {
@@ -299,9 +323,14 @@ const Cart: React.FC = () => {
         .from('CARTS')
         .select('cartId')
         .eq('userId', userData.userId)
-        .single();
+        .maybeSingle();
 
-      if (cartError || !cart) {
+      if (cartError) {
+        console.error('Error getting cart data:', cartError);
+        return;
+      }
+      
+      if (!cart) {
         console.log('No cart found for user');
         return;
       }
@@ -437,16 +466,24 @@ const Cart: React.FC = () => {
                     <IonItem key={item.cartItemId}>
                         <div className="cart-item">
                           <div className="item-image">
-                            {item.ITEMS_IN_STORE.item_image_url ? (
+                            {item.ITEMS_IN_STORE.item_image_url && isValidUrl(item.ITEMS_IN_STORE.item_image_url) ? (
                               <img 
                                 src={item.ITEMS_IN_STORE.item_image_url} 
                                 alt={item.ITEMS_IN_STORE.name}
+                                onError={(e) => {
+                                  // Hide broken image and show placeholder
+                                  e.currentTarget.style.display = 'none';
+                                  const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                                  if (placeholder) placeholder.style.display = 'flex';
+                                }}
                               />
-                            ) : (
-                              <div className="image-placeholder">
-                                🛒
-                              </div>
-                            )}
+                            ) : null}
+                            <div 
+                              className="image-placeholder"
+                              style={{ display: item.ITEMS_IN_STORE.item_image_url && isValidUrl(item.ITEMS_IN_STORE.item_image_url) ? 'none' : 'flex' }}
+                            >
+                              🛒
+                            </div>
                           </div>
                           
                           <div className="item-details">

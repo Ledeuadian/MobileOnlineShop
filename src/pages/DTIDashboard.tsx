@@ -38,6 +38,7 @@ import {
   logOutOutline,
   refreshOutline,
   close,
+  addOutline,
   informationCircleOutline,
   bagOutline,
   saveOutline,
@@ -85,6 +86,7 @@ interface StoreItem {
   availability: number;
   unit: string;
   item_image_url: string;
+  productTypeId: number;
   created_at: string;
   updated_at: string;
 }
@@ -99,12 +101,7 @@ interface ProductType {
   created_at: string;
 }
 
-interface SRPPrice {
-  productTypeId: number;
-  price: number;
-  effectiveDate: string;
-  isActive: boolean;
-}
+// Interface for raw PRODUCT_TYPE database records - removed as no longer needed
 
 const DTIDashboard: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('analytics');
@@ -126,8 +123,67 @@ const DTIDashboard: React.FC = () => {
   const [srpPrices, setSrpPrices] = useState<{[key: number]: number}>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // State for Add New Product functionality
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductBrand, setNewProductBrand] = useState('');
+  const [newProductVariant, setNewProductVariant] = useState('');
+  const [newProductUnit, setNewProductUnit] = useState('');
+  const [isSubmittingNewProduct, setIsSubmittingNewProduct] = useState(false);
+
+  // Helper function to get SRP price for a productTypeId
+  const getSRPPrice = (productTypeId: number | undefined | null): number | null => {
+    if (!productTypeId || !srpPrices) {
+      return null;
+    }
+    const price = srpPrices[productTypeId];
+    return price && price > 0 ? price : null;
+  };
+
+  // Helper function to compare store price with SRP price
+  const getPriceComparison = (storePrice: number, productTypeId: number | undefined | null) => {
+    const srpPrice = getSRPPrice(productTypeId);
+    if (!srpPrice) {
+      return { 
+        srpPrice: null, 
+        difference: null, 
+        status: 'no-srp' as const,
+        percentage: null 
+      };
+    }
+
+    const difference = storePrice - srpPrice;
+    const percentage = ((difference / srpPrice) * 100);
+    
+    let status: 'below' | 'above' | 'equal' | 'no-srp';
+    if (Math.abs(difference) < 0.01) { // Within 1 centavo
+      status = 'equal';
+    } else if (difference < 0) {
+      status = 'below';
+    } else {
+      status = 'above';
+    }
+
+    return {
+      srpPrice,
+      difference,
+      status,
+      percentage
+    };
+  };
+
+  // Debounce search text to prevent excessive filtering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   const loadDashboardStats = async () => {
     try {
@@ -340,14 +396,13 @@ const DTIDashboard: React.FC = () => {
         console.log(`After deduplication: ${uniqueProducts.length} unique products for DTI`);
         setProductTypes(uniqueProducts);
         
-        // Load existing SRP prices from SRP_PRICES table
+        // Load existing SRP prices from SRP table
         const { data: srpData, error: srpError } = await supabase
-          .from('SRP_PRICES')
-          .select('productTypeId, price')
-          .eq('isActive', true);
+          .from('SRP')
+          .select('productTypeId, Price');
 
         if (srpError) {
-          console.warn('SRP_PRICES table not found or error loading SRP data:', srpError);
+          console.warn('SRP table not found or error loading SRP data:', srpError);
           // Initialize with empty prices if table doesn't exist yet
           const initialPrices: {[key: number]: number} = {};
           uniqueProducts.forEach(product => {
@@ -355,6 +410,7 @@ const DTIDashboard: React.FC = () => {
           });
           setSrpPrices(initialPrices);
         } else if (srpData) {
+          console.log('SRP data loaded from database:', srpData);
           // Load actual SRP prices from database
           const srpMap: {[key: number]: number} = {};
           uniqueProducts.forEach(product => {
@@ -362,8 +418,11 @@ const DTIDashboard: React.FC = () => {
           });
           
           srpData.forEach(srp => {
-            srpMap[srp.productTypeId] = srp.price;
+            console.log(`SRP mapping: productTypeId ${srp.productTypeId} -> Price ${srp.Price}`);
+            srpMap[srp.productTypeId] = srp.Price;
           });
+          
+          console.log('Final SRP price map:', srpMap);
           setSrpPrices(srpMap);
         }
       }
@@ -384,32 +443,194 @@ const DTIDashboard: React.FC = () => {
         [productTypeId]: newPrice
       }));
 
-      // Save to SRP_PRICES table
-      const { error } = await supabase
-        .from('SRP_PRICES')
-        .upsert({
-          productTypeId,
-          price: newPrice,
-          effectiveDate: new Date().toISOString(),
-          isActive: true,
-          createdBy: 'DTI_USER'
-        }, {
-          onConflict: 'productTypeId,isActive'
-        });
+      // Use upsert to insert or update SRP price
+      // First, try to update existing record
+      const { data: updateResult, error: updateError } = await supabase
+        .from('SRP')
+        .update({
+          Price: newPrice,
+          updated_at: new Date().toISOString()
+        })
+        .eq('productTypeId', productTypeId)
+        .select();
 
-      if (error) {
-        console.error('Error updating SRP price:', error);
-        setToastMessage(`Error saving price: ${error.message}`);
-        setShowToast(true);
-        return;
+      // If no rows were updated (record doesn't exist), insert a new one
+      if (updateResult && updateResult.length === 0) {
+        // Simple insert without createdBy field to avoid UUID type issues
+        const { error: insertError } = await supabase
+          .from('SRP')
+          .insert({
+            productTypeId,
+            Price: newPrice
+          });
+
+        if (insertError) {
+          throw insertError;
+        }
+      } else if (updateError) {
+        throw updateError;
       }
 
       setToastMessage('SRP price updated successfully');
       setShowToast(true);
     } catch (error) {
       console.error('Error updating SRP price:', error);
-      setToastMessage('Error updating price');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setToastMessage(`Error updating price: ${errorMessage}`);
       setShowToast(true);
+      
+      // Revert local state on error
+      setSrpPrices(prev => {
+        const reverted = { ...prev };
+        // Find the original price from srpPrices or default to 0
+        const originalKeys = Object.keys(srpPrices);
+        const originalValues = Object.values(srpPrices);
+        const keyIndex = originalKeys.findIndex(key => parseInt(key) === productTypeId);
+        const originalPrice = keyIndex >= 0 ? originalValues[keyIndex] : 0;
+        reverted[productTypeId] = originalPrice;
+        return reverted;
+      });
+    }
+  };
+
+  const openAddItemModal = () => {
+    setIsAddItemModalOpen(true);
+  };
+
+  const closeAddItemModal = () => {
+    setIsAddItemModalOpen(false);
+    // Clear form fields
+    setNewProductName('');
+    setNewProductBrand('');
+    setNewProductVariant('');
+    setNewProductUnit('');
+  };
+
+  const checkForDuplicateProduct = async (name: string, brand: string, variant: string, unit: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('PRODUCT_TYPE')
+        .select('ProductTypeId')
+        .eq('Name', name)
+        .eq('Brand', brand)
+        .eq('Variant', variant)
+        .eq('Unit', unit)
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking for duplicate:', error);
+        return false;
+      }
+      
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error in duplicate check:', error);
+      return false;
+    }
+  };
+
+  const createNewProduct = async () => {
+    // Validate inputs
+    if (!newProductName.trim()) {
+      setToastMessage('Product name is required');
+      setShowToast(true);
+      return;
+    }
+
+    if (!newProductBrand.trim()) {
+      setToastMessage('Brand is required');
+      setShowToast(true);
+      return;
+    }
+
+    if (!newProductVariant.trim()) {
+      setToastMessage('Variant is required');
+      setShowToast(true);
+      return;
+    }
+
+    if (!newProductUnit.trim()) {
+      setToastMessage('Unit is required');
+      setShowToast(true);
+      return;
+    }
+
+    try {
+      setIsSubmittingNewProduct(true);
+
+      // Check for duplicates
+      const isDuplicate = await checkForDuplicateProduct(
+        newProductName.trim(),
+        newProductBrand.trim(),
+        newProductVariant.trim(),
+        newProductUnit.trim()
+      );
+
+      if (isDuplicate) {
+        setToastMessage('Product with same Name, Brand, Variant, and Unit already exists');
+        setShowToast(true);
+        return;
+      }
+
+      // Create new product in PRODUCT_TYPE table
+      const { data: newProduct, error: insertError } = await supabase
+        .from('PRODUCT_TYPE')
+        .insert({
+          Name: newProductName.trim(),
+          Brand: newProductBrand.trim(),
+          Variant: newProductVariant.trim(),
+          Unit: newProductUnit.trim(),
+          Quantity: 1 // Default quantity
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      // Add to SRP table with default price of 0
+      const { error: srpError } = await supabase
+        .from('SRP')
+        .insert({
+          productTypeId: newProduct.ProductTypeId,
+          Price: 0
+        });
+
+      if (srpError) {
+        console.warn('Product created but SRP entry failed:', srpError);
+        setToastMessage(`Product "${newProductName}" created successfully, but failed to add to SRP list`);
+      } else {
+        // Update local state
+        setSrpPrices(prev => ({
+          ...prev,
+          [newProduct.ProductTypeId]: 0
+        }));
+
+        // Add to productTypes list
+        setProductTypes(prev => [...prev, {
+          productTypeId: newProduct.ProductTypeId,
+          Name: newProduct.Name,
+          Brand: newProduct.Brand,
+          Variant: newProduct.Variant,
+          Unit: newProduct.Unit,
+          Quantity: newProduct.Quantity,
+          created_at: newProduct.created_at
+        }]);
+
+        setToastMessage(`Product "${newProductName}" created and added to SRP list successfully`);
+      }
+
+      setShowToast(true);
+      closeAddItemModal();
+      
+    } catch (error) {
+      console.error('Error creating new product:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setToastMessage(`Error creating product: ${errorMessage}`);
+      setShowToast(true);
+    } finally {
+      setIsSubmittingNewProduct(false);
     }
   };
 
@@ -443,17 +664,29 @@ const DTIDashboard: React.FC = () => {
         setSelectedStore(mockStoreDetails);
       }
 
-      // Get store items
+      // Get store items with productTypeId
       const { data: itemsData } = await supabase
         .from('ITEMS_IN_STORE')
-        .select('*')
+        .select(`
+          *,
+          productTypeId
+        `)
         .eq('storeId', storeId)
         .order('name', { ascending: true });
 
       if (itemsData && itemsData.length > 0) {
+        console.log('Store items loaded:', itemsData);
+        console.log('Current SRP prices:', srpPrices);
+        
+        // Debug: Check if productTypeId exists in SRP data
+        itemsData.forEach(item => {
+          const srpPrice = getSRPPrice(item.productTypeId);
+          console.log(`Item: ${item.name}, productTypeId: ${item.productTypeId}, SRP Price: ${srpPrice}`);
+        });
+        
         setStoreItems(itemsData);
       } else {
-        // Mock store items for demonstration
+        // Mock store items for demonstration (with sample productTypeId for SRP comparison)
         const mockItems: StoreItem[] = [
           {
             storeItemId: 1,
@@ -465,6 +698,7 @@ const DTIDashboard: React.FC = () => {
             availability: 100,
             unit: 'kg',
             item_image_url: '',
+            productTypeId: 1, // Sample productTypeId for rice
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           },
@@ -478,6 +712,7 @@ const DTIDashboard: React.FC = () => {
             availability: 50,
             unit: 'liter',
             item_image_url: '',
+            productTypeId: 2, // Sample productTypeId for cooking oil
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           },
@@ -491,6 +726,7 @@ const DTIDashboard: React.FC = () => {
             availability: 200,
             unit: 'pcs',
             item_image_url: '',
+            productTypeId: 3, // Sample productTypeId for eggs
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
@@ -558,7 +794,11 @@ const DTIDashboard: React.FC = () => {
       <IonGrid>
         <IonRow>
           <IonCol size="6">
-            <IonCard className="dti-stats-card">
+            <IonCard 
+              className="dti-stats-card clickable-card" 
+              button 
+              onClick={() => setSelectedSegment('stores')}
+            >
               <IonCardContent className="dti-stats-content">
                 <IonIcon icon={storefrontOutline} className="dti-stats-icon stores" />
                 <div className="dti-stats-info">
@@ -569,7 +809,11 @@ const DTIDashboard: React.FC = () => {
             </IonCard>
           </IonCol>
           <IonCol size="6">
-            <IonCard className="dti-stats-card">
+            <IonCard 
+              className="dti-stats-card clickable-card" 
+              button 
+              onClick={() => setSelectedSegment('srp')}
+            >
               <IonCardContent className="dti-stats-content">
                 <IonIcon icon={cartOutline} className="dti-stats-icon items" />
                 <div className="dti-stats-info">
@@ -686,10 +930,51 @@ const DTIDashboard: React.FC = () => {
   );
 
   const renderSRPPricing = () => {
-    const filteredProducts = productTypes.filter(product => 
-      product.Name.toLowerCase().includes(searchText.toLowerCase()) ||
-      product.Brand.toLowerCase().includes(searchText.toLowerCase())
-    );
+    // Safety check for productTypes array
+    if (!Array.isArray(productTypes)) {
+      console.warn('productTypes is not an array:', productTypes);
+      return (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>Error loading products. Please refresh.</p>
+          <IonButton fill="outline" onClick={() => loadProductTypesAndSRP()}>
+            <IonIcon icon={refreshOutline} slot="start" />
+            Refresh
+          </IonButton>
+        </div>
+      );
+    }
+
+    let filteredProducts = [];
+    try {
+      filteredProducts = productTypes.filter(product => {
+        // Safety checks for null/undefined values and proper object structure
+        if (!product || typeof product !== 'object') {
+          console.warn('Invalid product object:', product);
+          return false;
+        }
+        
+        const productName = product.Name || '';
+        const productBrand = product.Brand || '';
+        const searchTerm = debouncedSearchText?.toLowerCase() || '';
+        
+        return productName.toLowerCase().includes(searchTerm) ||
+               productBrand.toLowerCase().includes(searchTerm);
+      });
+    } catch (error) {
+      console.error('Error filtering products:', error);
+      return (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>Search error occurred. Please try again.</p>
+          <IonButton fill="outline" onClick={() => {
+            setSearchText('');
+            loadProductTypesAndSRP();
+          }}>
+            <IonIcon icon={refreshOutline} slot="start" />
+            Reset
+          </IonButton>
+        </div>
+      );
+    }
 
     return (
       <div className="dti-srp-container">
@@ -702,10 +987,21 @@ const DTIDashboard: React.FC = () => {
         
         <IonSearchbar
           value={searchText}
-          onIonInput={e => setSearchText(e.detail.value!)}
+          onIonInput={e => setSearchText(e.detail.value || '')}
           placeholder="Search products by name or brand..."
           style={{ marginBottom: '1rem' }}
         />
+
+        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+          <IonButton 
+            fill="outline" 
+            color="success" 
+            onClick={openAddItemModal}
+          >
+            <IonIcon icon={addOutline} slot="start" />
+            Add Item to SRP List
+          </IonButton>
+        </div>
 
         {loadingProducts ? (
           <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -790,7 +1086,7 @@ const DTIDashboard: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       
-      <IonContent>
+      <IonContent id="main-content">
         <div className="dti-segment">
           <IonSegment 
             value={selectedSegment} 
@@ -890,27 +1186,59 @@ const DTIDashboard: React.FC = () => {
                     </div>
                   ) : storeItems.length > 0 ? (
                     <IonList>
-                      {storeItems.map((item) => (
-                        <IonCard key={item.storeItemId} className="item-card">
-                          <IonCardContent>
-                            <div className="item-details">
-                              <div className="item-header">
-                                <h3>{item.name}</h3>
-                                <IonBadge color="primary">₱{item.price.toFixed(2)}</IonBadge>
+                      {storeItems.map((item) => {
+                        const priceComparison = getPriceComparison(item.price, item.productTypeId);
+                        return (
+                          <IonCard key={item.storeItemId} className="item-card">
+                            <IonCardContent>
+                              <div className="item-details">
+                                <div className="item-header">
+                                  <h3>{item.name}</h3>
+                                  <div className="price-comparison">
+                                    <IonBadge color="primary">₱{item.price.toFixed(2)}</IonBadge>
+                                    {priceComparison.srpPrice && (
+                                      <div className="srp-price-info">
+                                        <IonBadge 
+                                          color="secondary" 
+                                          style={{ marginLeft: '8px', fontSize: '0.8em' }}
+                                        >
+                                          SRP: ₱{priceComparison.srpPrice.toFixed(2)}
+                                        </IonBadge>
+                                        <IonBadge 
+                                          color={
+                                            priceComparison.status === 'below' ? 'success' :
+                                            priceComparison.status === 'above' ? 'danger' : 'warning'
+                                          }
+                                          style={{ marginLeft: '4px', fontSize: '0.7em' }}
+                                        >
+                                          {priceComparison.status === 'below' && `${Math.abs(priceComparison.percentage!).toFixed(1)}% below`}
+                                          {priceComparison.status === 'above' && `${priceComparison.percentage!.toFixed(1)}% above`}
+                                          {priceComparison.status === 'equal' && 'Equal'}
+                                        </IonBadge>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className="item-description">{item.description}</p>
+                                {item.brand && (
+                                  <p><strong>Brand:</strong> {item.brand}</p>
+                                )}
+                                <div className="item-info">
+                                  <span><strong>Category:</strong> {item.category}</span>
+                                  <span><strong>Unit:</strong> {item.unit || 'N/A'}</span>
+                                  <span><strong>Available:</strong> {item.availability} pcs</span>
+                                  {priceComparison.srpPrice && (
+                                    <span>
+                                      <strong>Price vs SRP:</strong> 
+                                      {priceComparison.difference! > 0 ? '+' : ''}₱{priceComparison.difference!.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <p className="item-description">{item.description}</p>
-                              {item.brand && (
-                                <p><strong>Brand:</strong> {item.brand}</p>
-                              )}
-                              <div className="item-info">
-                                <span><strong>Category:</strong> {item.category}</span>
-                                <span><strong>Unit:</strong> {item.unit || 'N/A'}</span>
-                                <span><strong>Available:</strong> {item.availability} pcs</span>
-                              </div>
-                            </div>
-                          </IonCardContent>
-                        </IonCard>
-                      ))}
+                            </IonCardContent>
+                          </IonCard>
+                        );
+                      })}
                     </IonList>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -921,6 +1249,105 @@ const DTIDashboard: React.FC = () => {
               </IonCard>
             </div>
           )}
+        </IonContent>
+      </IonModal>
+
+      {/* Add Item Modal */}
+      <IonModal isOpen={isAddItemModalOpen} onDidDismiss={closeAddItemModal}>
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Add New Product to SRP List</IonTitle>
+            <IonButtons slot="end">
+              <IonButton onClick={closeAddItemModal}>
+                <IonIcon icon={close} />
+              </IonButton>
+            </IonButtons>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent>
+          <div style={{ padding: '1rem' }}>
+            <p style={{ marginBottom: '1.5rem', color: 'var(--ion-color-medium)' }}>
+              Create a new product and add it to the SRP price list. All fields are required.
+            </p>
+
+            <IonItem>
+              <IonLabel position="stacked">Product Name</IonLabel>
+              <IonInput
+                value={newProductName}
+                onIonInput={e => setNewProductName(e.detail.value || '')}
+                placeholder="Enter product name"
+                required
+              />
+            </IonItem>
+
+            <IonItem>
+              <IonLabel position="stacked">Brand</IonLabel>
+              <IonInput
+                value={newProductBrand}
+                onIonInput={e => setNewProductBrand(e.detail.value || '')}
+                placeholder="Enter brand name"
+                required
+              />
+            </IonItem>
+
+            <IonItem>
+              <IonLabel position="stacked">Variant</IonLabel>
+              <IonInput
+                value={newProductVariant}
+                onIonInput={e => setNewProductVariant(e.detail.value || '')}
+                placeholder="Enter variant (e.g., Original, Large, etc.)"
+                required
+              />
+            </IonItem>
+
+            <IonItem>
+              <IonLabel position="stacked">Unit</IonLabel>
+              <IonInput
+                value={newProductUnit}
+                onIonInput={e => setNewProductUnit(e.detail.value || '')}
+                placeholder="Enter unit (e.g., pc, kg, bottle, etc.)"
+                required
+              />
+            </IonItem>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+              <IonButton
+                expand="block"
+                color="primary"
+                onClick={createNewProduct}
+                disabled={isSubmittingNewProduct}
+                style={{ flex: 1 }}
+              >
+                {isSubmittingNewProduct ? (
+                  <>
+                    <IonSpinner />
+                    <span style={{ marginLeft: '0.5rem' }}>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <IonIcon icon={addOutline} slot="start" />
+                    Create Product
+                  </>
+                )}
+              </IonButton>
+              
+              <IonButton
+                fill="outline"
+                color="medium"
+                onClick={closeAddItemModal}
+                disabled={isSubmittingNewProduct}
+                style={{ flex: '0 0 auto' }}
+              >
+                Cancel
+              </IonButton>
+            </div>
+
+            <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--ion-color-light)', borderRadius: '8px' }}>
+              <p style={{ fontSize: '0.9rem', margin: 0, color: 'var(--ion-color-dark)' }}>
+                <strong>Note:</strong> The system will check for duplicate products with the same Name, Brand, Variant, and Unit combination before creating.
+              </p>
+            </div>
+          </div>
         </IonContent>
       </IonModal>
 

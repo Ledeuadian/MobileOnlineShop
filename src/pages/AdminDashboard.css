@@ -56,6 +56,22 @@
   background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
 }
 
+/* Clickable Stats Cards */
+.stats-card.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.stats-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.stats-card.clickable:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .stats-content {
   display: flex;
   align-items: center;
@@ -222,6 +238,86 @@ ion-badge {
   margin-top: 40px;
   border-top: 1px solid #e0e0e0;
   background-color: #f8f9fa;
+}
+
+/* Modal Styles */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  font-size: 16px;
+  color: #666;
+}
+
+.user-item-content {
+  width: 100%;
+}
+
+.user-info {
+  padding: 8px 0;
+}
+
+.user-info h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.user-info p {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: #007bff;
+  font-weight: 500;
+}
+
+.user-info small {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+}
+
+/* Modal Header */
+ion-modal ion-header ion-toolbar {
+  --background: #007bff;
+  --color: white;
+}
+
+ion-modal ion-header ion-title {
+  font-weight: 600;
+}
+
+ion-modal ion-header ion-button {
+  --color: white;
+}
+
+/* User Item Layout */
+.user-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.user-basic-info {
+  flex: 1;
+}
+
+.user-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.user-details p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.user-details strong {
+  color: #007bff;
 }
 
 .admin-logout-btn {

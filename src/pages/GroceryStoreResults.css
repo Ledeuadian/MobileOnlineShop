@@ -1,0 +1,237 @@
+.store-results-container {
+  padding: 16px;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.results-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.results-header h2 {
+  margin: 0 0 8px 0;
+  color: #333;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.search-summary {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.store-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.store-result-card {
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.store-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.store-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.store-icon {
+  font-size: 1.5rem;
+  color: #3880ff;
+}
+
+.store-result-card ion-card-title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.store-rank {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 4px;
+}
+
+.availability-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.score-badge {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 20px;
+}
+
+.score-label {
+  font-size: 0.7rem;
+  color: #666;
+  text-align: center;
+}
+
+.store-summary {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.summary-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.summary-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.matched-items h4 {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-availability {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.item-name {
+  font-weight: 500;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.item-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-brand {
+  font-size: 0.8rem;
+  color: #666;
+  background-color: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.item-variant {
+  font-size: 0.8rem;
+  color: #555;
+  font-style: italic;
+}
+
+.item-unit {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.item-price {
+  font-size: 0.85rem;
+  color: #3880ff;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.availability-status {
+  margin-left: 12px;
+}
+
+.availability-status ion-chip {
+  font-size: 0.75rem;
+  height: 24px;
+  margin: 0;
+}
+
+.availability-status ion-chip ion-icon {
+  font-size: 0.8rem;
+  margin-right: 4px;
+}
+
+.availability-status ion-chip span {
+  font-size: 0.75rem;
+}
+
+/* Color variations for availability scores */
+ion-badge[color="success"] {
+  --background: #10dc60;
+}
+
+ion-badge[color="warning"] {
+  --background: #ffce00;
+}
+
+ion-badge[color="danger"] {
+  --background: #f04141;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .store-results-container {
+    padding: 12px;
+  }
+  
+  .results-header h2 {
+    font-size: 1.3rem;
+  }
+  
+  .store-header {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  
+  .item-availability {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .availability-status {
+    margin-left: 0;
+  }
+}

@@ -13,23 +13,15 @@ import {
   IonList,
   IonItem,
   IonCheckbox,
-  IonFab,
-  IonFabButton,
   IonBadge,
-  IonModal,
-  IonInput,
-  IonSelect,
-  IonSelectOption,
   IonSpinner
 } from '@ionic/react';
 import { 
   arrowBackOutline, 
   cartOutline, 
   personOutline, 
-  addOutline,
-  storefrontOutline,
-  checkmarkOutline,
-  chevronDownOutline
+  searchOutline,
+  storefrontOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import './GroceryList.css';
@@ -50,11 +42,6 @@ const GroceryList: React.FC = () => {
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemBrand, setNewItemBrand] = useState('');
-  const [newItemSize, setNewItemSize] = useState('');
-  const [newItemMeasurement, setNewItemMeasurement] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Function to fetch product types from database
@@ -189,76 +176,20 @@ const GroceryList: React.FC = () => {
     console.log('Profile navigation - to be implemented');
   };
 
-  const openAddModal = () => {
-    setShowAddModal(true);
-  };
-
-  const closeAddModal = () => {
-    setShowAddModal(false);
-    // Reset form fields
-    setNewItemName('');
-    setNewItemBrand('');
-    setNewItemSize('');
-    setNewItemMeasurement('');
-  };
-
-  const addNewItem = async () => {
-    if (newItemName.trim()) {
-      try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          console.error('User not authenticated');
-          return;
-        }
-
-        // Get user's store ID
-        const { data: store, error: storeError } = await supabase
-          .from('GROCERY_STORE')
-          .select('storeId')
-          .eq('owner_id', user.id)
-          .single();
-
-        if (storeError || !store) {
-          console.error('Store not found for user:', storeError);
-          return;
-        }
-
-        // Insert item into ITEMS_IN_STORE table
-        const { data: insertedItem, error: insertError } = await supabase
-          .from('ITEMS_IN_STORE')
-          .insert({
-            storeId: store.storeId,
-            name: newItemName.trim(),
-            item_name: newItemName.trim(),
-            brand: newItemBrand.trim() || null,
-            item_quantity: newItemSize ? parseInt(newItemSize) : 0,
-            item_description: newItemSize && newItemMeasurement ? `${newItemSize}${newItemMeasurement}` : null,
-            availability: 1
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Error inserting item:', insertError);
-          return;
-        }
-
-        // Add to local grocery list
-        const newItem: GroceryItem = {
-          id: insertedItem.storeItemId,
-          name: newItemName.trim(),
-          brand: newItemBrand.trim() || undefined,
-          quantity: newItemSize && newItemMeasurement ? `${newItemSize}${newItemMeasurement}` : undefined,
-          checked: false
-        };
-        
-        setGroceryItems(prevItems => [...prevItems, newItem]);
-        closeAddModal();
-      } catch (error) {
-        console.error('Error adding new item:', error);
-      }
+  const handleSearchGrocery = () => {
+    // Get selected items
+    const selectedItems = groceryItems.filter(item => item.checked);
+    
+    if (selectedItems.length === 0) {
+      // Show a simple alert for now - can be improved with toast/modal
+      alert('Please select at least one item from your grocery list to search for stores.');
+      return;
     }
+    
+    console.log('Searching for stores with selected items:', selectedItems);
+    
+    // Navigate to grocery store search results with selected items
+    history.push('/grocery-store-results', { selectedItems });
   };
 
   return (
@@ -278,7 +209,7 @@ const GroceryList: React.FC = () => {
         <div className="grocery-list-container">
           <div className="grocery-header">
             <h2>Grocery list</h2>
-            <p className="item-count">{groceryItems.length} grocery items</p>
+            <p className="item-count">{groceryItems.filter(item => item.checked).length} items selected</p>
           </div>
 
           {/* Search Bar */}
@@ -352,97 +283,28 @@ const GroceryList: React.FC = () => {
           </button>
         </div>
 
-        {/* Add New Item FAB */}
-        <IonFab vertical="bottom" horizontal="center" slot="fixed" className="add-fab">
-          <IonFabButton color="primary" onClick={openAddModal}>
-            <IonIcon icon={addOutline} />
-          </IonFabButton>
-        </IonFab>
+        {/* Search Grocery Button */}
+        <div style={{ 
+          position: 'fixed', 
+          bottom: '80px', 
+          left: '50%', 
+          transform: 'translateX(-50%)', 
+          zIndex: 1000 
+        }}>
+          <IonButton 
+            color="primary" 
+            onClick={handleSearchGrocery}
+            style={{ 
+              borderRadius: '25px',
+              padding: '12px 24px',
+              fontWeight: '600'
+            }}
+          >
+            <IonIcon icon={searchOutline} slot="start" />
+            Search Grocery
+          </IonButton>
+        </div>
 
-        {/* Add New Item Modal */}
-        <IonModal isOpen={showAddModal} onDidDismiss={closeAddModal}>
-          <IonHeader>
-            <IonToolbar>
-              <IonButtons slot="start">
-                <IonButton fill="clear" onClick={closeAddModal}>
-                  <IonIcon icon={arrowBackOutline} />
-                </IonButton>
-              </IonButtons>
-              <IonTitle>Add new item</IonTitle>
-              <IonButtons slot="end">
-                <IonButton fill="clear" onClick={addNewItem}>
-                  <IonIcon icon={checkmarkOutline} />
-                </IonButton>
-              </IonButtons>
-            </IonToolbar>
-          </IonHeader>
-          <IonContent className="modal-content">
-            <div className="add-item-form">
-              {/* Grocery Name Field */}
-              <div className="form-field">
-                <IonInput
-                  value={newItemName}
-                  onIonInput={(e) => setNewItemName(e.detail.value!)}
-                  placeholder="grocery name"
-                  className="form-input"
-                />
-              </div>
-
-              {/* Brand Name Field */}
-              <div className="form-field">
-                <IonInput
-                  value={newItemBrand}
-                  onIonInput={(e) => setNewItemBrand(e.detail.value!)}
-                  placeholder="brand name"
-                  className="form-input"
-                />
-              </div>
-
-              {/* Size and Measurement Fields */}
-              <div className="form-row">
-                <div className="form-field size-field">
-                  <IonInput
-                    value={newItemSize}
-                    onIonInput={(e) => setNewItemSize(e.detail.value!)}
-                    placeholder="Qty"
-                    className="form-input"
-                  />
-                </div>
-                <div className="form-field measurement-field">
-                  <IonSelect
-                    value={newItemMeasurement}
-                    onIonChange={(e) => setNewItemMeasurement(e.detail.value)}
-                    placeholder="unit"
-                    interface="popover"
-                    className="form-select"
-                  >
-                    <IonSelectOption value="g">g (grams)</IonSelectOption>
-                    <IonSelectOption value="kg">kg (kilograms)</IonSelectOption>
-                    <IonSelectOption value="ml">ml (milliliters)</IonSelectOption>
-                    <IonSelectOption value="L">L (liters)</IonSelectOption>
-                    <IonSelectOption value="pcs">pcs (pieces)</IonSelectOption>
-                    <IonSelectOption value="pack">pack</IonSelectOption>
-                    <IonSelectOption value="bottle">bottle</IonSelectOption>
-                    <IonSelectOption value="box">box</IonSelectOption>
-                  </IonSelect>
-                  <IonIcon icon={chevronDownOutline} className="select-arrow" />
-                </div>
-              </div>
-
-              {/* Add Button */}
-              <div className="form-button-container">
-                <IonButton 
-                  expand="block" 
-                  onClick={addNewItem}
-                  className="add-button"
-                  disabled={!newItemName.trim()}
-                >
-                  Add
-                </IonButton>
-              </div>
-            </div>
-          </IonContent>
-        </IonModal>
       </IonContent>
     </IonPage>
   );

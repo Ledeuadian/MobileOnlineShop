@@ -21,6 +21,12 @@ const Login: React.FC = () => {
   const [showLoginForm, setShowLoginForm] = useState(() => !!(location.state as { showLoginForm?: boolean })?.showLoginForm);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showRegisterNowModal, setShowRegisterNowModal] = useState(false);
+  
+  // Password reset states
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
   // OAuth callback: after redirect to /home, check session and insert user if needed
   useEffect(() => {
     const checkOAuthUser = async () => {
@@ -106,6 +112,34 @@ const Login: React.FC = () => {
     };
     checkOAuthUser();
   }, [history]);
+
+  // Handle forgot password
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    setResetMessage('');
+
+    if (!resetEmail) {
+      setResetError('Please enter your email address');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        setResetError(error.message);
+      } else {
+        setResetMessage('Password reset email sent! Please check your inbox.');
+        setResetEmail('');
+      }
+    } catch (err: unknown) {
+      console.error('Password reset error:', err);
+      setResetError('An error occurred. Please try again.');
+    }
+  };
 
   return (
     <div className="login-container">
@@ -220,7 +254,13 @@ const Login: React.FC = () => {
               </IonButton>
             </IonItem>
             <div className="forgot-password">
-              <button type="button" className="forgot-password-link">Forgot password?</button>
+              <button 
+                type="button" 
+                className="forgot-password-link"
+                onClick={() => setShowForgotPasswordModal(true)}
+              >
+                Forgot password?
+              </button>
             </div>
             <button type="submit" className="login-button main-login">Login</button>
             {error && <div style={{ color: 'red', marginTop: '12px' }}>{error}</div>}
@@ -238,7 +278,7 @@ const Login: React.FC = () => {
                   const { error } = await supabase.auth.signInWithOAuth({
                     provider: 'facebook',
                     options: {
-                      redirectTo: window.location.origin + '/home'
+                      redirectTo: window.location.origin + '/'
                     }
                   });
                   if (error) {
@@ -248,7 +288,18 @@ const Login: React.FC = () => {
               >
                 <span className="icon"> <img src="/Images/fb.png" alt="Facebook Logo" className="social-icon-img" /></span>
               </button>
-            <button type="button" className="social-btn">
+            <button 
+              type="button" 
+              className="social-btn"
+              onClick={async () => {
+                const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'twitter'
+                });
+                if (error) {
+                  setError(error.message);
+                }
+              }}
+            >
               <span className="icon"> <img src="/Images/x.png" alt="X Logo" className="social-icon-img" /></span>
             </button>
           </div>
@@ -267,6 +318,55 @@ const Login: React.FC = () => {
                 <IonButton expand="block" onClick={() => handleRegisterOption('STORE')}>STORE</IonButton>
               </div>
               <IonButton color="medium" style={{marginTop: '24px'}} onClick={() => setShowRegisterNowModal(false)}>Cancel</IonButton>
+            </div>
+          </IonModal>
+
+          {/* Forgot Password Modal */}
+          <IonModal isOpen={showForgotPasswordModal} onDidDismiss={() => setShowForgotPasswordModal(false)}>
+            <div style={{padding: '32px', textAlign: 'center'}}>
+              <h3>Reset Password</h3>
+              <p style={{color: '#666', marginBottom: '24px'}}>
+                Enter your email address and we'll send you a link to reset your password.
+              </p>
+              
+              <form onSubmit={handleForgotPassword} style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
+                <IonItem style={{background: 'transparent', borderRadius: '8px', border: '1px solid #ccc'}}>
+                  <IonInput
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={resetEmail}
+                    onIonInput={(e: CustomEvent) => setResetEmail((e.target as HTMLInputElement).value)}
+                    required
+                  />
+                </IonItem>
+                
+                {resetError && <div style={{color: 'red', fontSize: '14px'}}>{resetError}</div>}
+                {resetMessage && <div style={{color: 'green', fontSize: '14px'}}>{resetMessage}</div>}
+                
+                <div style={{display: 'flex', gap: '12px', marginTop: '24px'}}>
+                  <IonButton 
+                    expand="block" 
+                    type="submit" 
+                    disabled={!resetEmail.trim()}
+                    style={{flex: 1}}
+                  >
+                    Send Reset Link
+                  </IonButton>
+                  <IonButton 
+                    color="medium" 
+                    fill="outline"
+                    onClick={() => {
+                      setShowForgotPasswordModal(false);
+                      setResetEmail('');
+                      setResetError('');
+                      setResetMessage('');
+                    }}
+                    style={{flex: 1}}
+                  >
+                    Cancel
+                  </IonButton>
+                </div>
+              </form>
             </div>
           </IonModal>
         </>

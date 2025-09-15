@@ -31,6 +31,7 @@ import './theme/variables.css';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ResetPassword from './pages/ResetPassword';
 import AccountConfirmation from './components/AccountConfirmation';
 import OAuthCallback from './components/OAuthCallback';
 import PendingApproval from './pages/PendingApproval';
@@ -43,6 +44,7 @@ const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
 const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
 const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
+const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 
 setupIonicReact();
@@ -341,6 +343,45 @@ const ProtectedHomeRoute: React.FC = () => {
         }
 
         console.log('🟢 Session found for Home route:', session.user.email);
+        
+        // Check user approval status and userTypeCode
+        const approvalResult = await checkUserApprovalStatus(session.user.email);
+        
+        if (approvalResult?.error) {
+          console.error('Error fetching user profile:', approvalResult.error);
+          history.push('/login');
+          return;
+        }
+        
+        // Check if user is DTI (userTypeCode === 2) - they should not access /home
+        if (approvalResult?.data?.userTypeCode === 2) {
+          console.log('🔒 DTI user attempting to access /home, redirecting to /dti-dashboard');
+          history.push('/dti-dashboard');
+          return;
+        }
+        
+        // Check if user is Admin (userTypeCode === 1) - they should not access /home
+        if (approvalResult?.data?.userTypeCode === 1) {
+          console.log('🔒 Admin user attempting to access /home, redirecting to /admin-dashboard');
+          history.push('/admin-dashboard');
+          return;
+        }
+        
+        // Check if user is Store (userTypeCode === 3) - they should not access /home
+        if (approvalResult?.data?.userTypeCode === 3) {
+          console.log('🔒 Store user attempting to access /home, redirecting to /store-dashboard');
+          history.push('/store-dashboard');
+          return;
+        }
+        
+        // If user is pending approval, redirect to pending page
+        if (approvalResult?.data?.approval_status === 'pending') {
+          console.log('🟡 User is pending approval, redirecting to pending page');
+          history.push('/pending-approval');
+          return;
+        }
+        
+        // Only regular consumers (userTypeCode === 4 or other) can access /home
         setIsAuthorized(true);
       } catch (error) {
         console.error('❌ Error checking home authorization:', error);
@@ -588,6 +629,72 @@ const ProtectedGroceryListRoute: React.FC = () => {
   ) : null;
 };
 
+const ProtectedGroceryStoreResultsRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        console.log('🟢 Session found for Grocery Store Results route:', session.user.email);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking grocery store results authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <GroceryStoreResults />
+    </React.Suspense>
+  ) : null;
+};
+
 const App: React.FC = () => {
   // Global session monitoring
   useEffect(() => {
@@ -655,6 +762,9 @@ const App: React.FC = () => {
           <Route exact path="/register">
             <Register />
           </Route>
+          <Route exact path="/reset-password">
+            <ResetPassword />
+          </Route>
           <Route exact path="/home">
             <ProtectedHomeRoute />
           </Route>
@@ -666,6 +776,9 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/grocery-list">
             <ProtectedGroceryListRoute />
+          </Route>
+          <Route exact path="/grocery-store-results">
+            <ProtectedGroceryStoreResultsRoute />
           </Route>
           <Route exact path="/verified">
             <AccountConfirmation />
