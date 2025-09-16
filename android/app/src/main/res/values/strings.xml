@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Grocerlytics</string>
+    <string name="title_activity_main">Grocerlytics</string>
+    <string name="package_name">com.groceryshop.app</string>
+    <string name="custom_url_scheme">com.groceryshop.app</string>
+</resources>

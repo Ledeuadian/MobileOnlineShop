@@ -66,11 +66,24 @@
   margin-top: 4px;
 }
 
+.store-distance {
+  font-size: 0.75rem;
+  color: #3880ff;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
 .availability-score {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+}
+
+.distance-score {
+  margin-top: 2px;
 }
 
 .score-badge {

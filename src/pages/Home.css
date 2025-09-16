@@ -423,6 +423,7 @@
 
 .shop-btn,
 .cart-btn,
+.nearby-btn,
 .profile-btn {
   width: 28px;
   height: 28px;
@@ -432,6 +433,7 @@
 
 .shop-btn:hover,
 .cart-btn:hover,
+.nearby-btn:hover,
 .profile-btn:hover {
   transform: scale(1.1);
 }

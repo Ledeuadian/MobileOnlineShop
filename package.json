@@ -10,11 +10,17 @@
     "preview": "vite preview",
     "test.e2e": "cypress run",
     "test.unit": "vitest",
-    "lint": "eslint"
+    "lint": "eslint",
+    "populate-suarez": "node populate_suarez_final.js",
+    "android:build": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:run": "npm run android:build && npx cap run android"
   },
   "dependencies": {
+    "@capacitor/android": "7.4.3",
     "@capacitor/app": "7.0.2",
     "@capacitor/core": "7.4.3",
+    "@capacitor/geolocation": "^7.1.5",
     "@capacitor/haptics": "7.0.2",
     "@capacitor/keyboard": "7.0.2",
     "@capacitor/status-bar": "7.0.2",

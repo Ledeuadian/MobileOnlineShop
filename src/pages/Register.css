@@ -1,44 +1,47 @@
+/* Full height wrapper for mobile */
+body, html {
+  height: 100vh;
+  overflow-x: hidden;
+}
+
 .register-container {
   max-width: 420px;
-  margin: 40px auto;
-  padding: 32px 24px;
+  margin: 0 auto;
+  padding: 20px;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 2px 16px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
+
 .register-form-logo {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
+
 .register-image {
   width: 220px;
   height: auto;
   border-radius: 8px;
-  margin-bottom: 0;
+  margin-bottom: 24px;
 }
-.register-logo-shadow {
-  width: 320px;
-  height: 28px;
-  background: radial-gradient(ellipse at center, #e0e0e0 60%, transparent 100%);
-  margin: -12px auto 0 auto;
-  border-radius: 50%;
-  position: relative;
-  top: -10px;
-  z-index: 0;
-}
+
 .register-form {
   width: 100%;
   display: flex;
   flex-direction: column;
   margin-top: 32px;
 }
+
 .register-input {
-  margin-bottom: 9px;
+  margin-bottom: 16px;
   padding: 12px 24px;
   border: 2px solid #444;
   border-radius: 24px;
@@ -46,6 +49,7 @@
   background: #fff;
   color: #444;
 }
+
 .register-button-main {
   width: 100%;
   background: #2d6b6b;
@@ -55,46 +59,35 @@
   font-size: 1.5rem;
   font-family: inherit;
   padding: 18px 0;
-  margin-top: 0px;
+  margin-top: 24px;
   margin-bottom: 0;
   font-weight: bold;
   box-shadow: 0 2px 8px rgba(45,107,107,0.08);
   transition: background 0.2s;
+  cursor: pointer;
 }
+
 .register-button-main:hover {
   background: #205050;
 }
-.register-divider {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin: 32px 0 24px 0;
-}
-.register-divider-line {
-  flex: 1;
-  height: 3px;
-  background: #444;
-  border: none;
-}
-.register-divider-text {
-  margin: 0 18px;
-  color: #444;
-  font-size: 1.25rem;
-}
+
 .register-signup-link {
-  margin-top: 48px;
+  margin-top: 32px;
   font-size: 1rem;
   text-align: center;
 }
+
 .register-signup-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
 }
+
 .register-signup-text {
   color: #444;
 }
+
 .register-link-button {
   background: none;
   border: none;
@@ -105,6 +98,61 @@
   cursor: pointer;
   padding: 0;
 }
+
 .register-link-button:hover {
   text-decoration: underline;
+}
+
+/* Mobile optimizations */
+@media screen and (max-height: 800px) {
+  .register-container {
+    min-height: 100vh;
+    justify-content: flex-start;
+    padding-top: 40px;
+  }
+  .register-image {
+    width: 180px !important;
+    margin-bottom: 20px !important;
+  }
+  .register-form {
+    margin-top: 20px !important;
+  }
+}
+
+@media screen and (max-height: 700px) {
+  .register-container {
+    padding-top: 20px;
+  }
+  .register-image {
+    width: 160px !important;
+    margin-bottom: 16px !important;
+  }
+  .register-form {
+    margin-top: 16px !important;
+  }
+  .register-button-main {
+    padding: 14px 0 !important;
+    font-size: 1.3rem !important;
+  }
+  .register-input {
+    margin-bottom: 12px !important;
+    padding: 10px 20px !important;
+  }
+}
+
+@media screen and (max-height: 600px) {
+  .register-container {
+    padding: 10px;
+    padding-top: 10px;
+  }
+  .register-image {
+    width: 140px !important;
+    margin-bottom: 12px !important;
+  }
+  .register-form {
+    margin-top: 12px !important;
+  }
+  .register-signup-link {
+    margin-top: 20px !important;
+  }
 }

@@ -22,7 +22,7 @@ import {
   IonToast,
   IonBadge
 } from '@ionic/react';
-import { star, heart, cartOutline, locationOutline, storefrontOutline, personOutline, add, remove, close } from 'ionicons/icons';
+import { star, heart, cartOutline, locationOutline, storefrontOutline, personOutline, peopleOutline, add, remove, close } from 'ionicons/icons';
 import ProfileMenu from '../components/ProfileMenu';
 import './Home.css';
 
@@ -227,6 +227,10 @@ const Home: React.FC = () => {
 
   const navigateToGroceryList = () => {
     history.push('/grocery-list');
+  };
+
+  const navigateToNearbyUsers = () => {
+    history.push('/nearby-users');
   };
 
   const incrementQuantity = () => {
@@ -549,6 +553,9 @@ const Home: React.FC = () => {
                 {cartItemCount}
               </IonBadge>
             )}
+          </button>
+          <button className="bottom-bar-btn" onClick={navigateToNearbyUsers}>
+            <IonIcon icon={peopleOutline} className="nearby-btn" />
           </button>
           <IonMenuToggle menu="profile-menu">
             <button className="bottom-bar-btn" onClick={() => console.log('Profile button clicked')}>

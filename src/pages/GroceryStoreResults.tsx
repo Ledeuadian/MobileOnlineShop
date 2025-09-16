@@ -21,9 +21,12 @@ import {
   arrowBackOutline, 
   storefrontOutline,
   checkmarkCircleOutline,
-  closeCircleOutline
+  closeCircleOutline,
+  locationOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
+import { LocationService } from '../services/locationService';
+import { KNNService } from '../services/knnService';
 import './GroceryStoreResults.css';
 
 interface GroceryItem {
@@ -55,6 +58,8 @@ interface StoreResult {
   availableItems: number;
   matchedItems: StoreItem[];
   availabilityScore: number;
+  distance?: number; // Distance in kilometers
+  distanceScore: number; // Score based on proximity (higher = closer)
 }
 
 const GroceryStoreResults: React.FC = () => {
@@ -106,7 +111,9 @@ const GroceryStoreResults: React.FC = () => {
           totalItems: 0,
           availableItems: 0,
           matchedItems: [],
-          availabilityScore: 0
+          availabilityScore: 0,
+          distance: undefined,
+          distanceScore: 0
         };
       });
 
@@ -134,21 +141,95 @@ const GroceryStoreResults: React.FC = () => {
       });
 
       // Calculate availability scores and sort
-      const results = Object.values(storeResultsMap)
+      const baseResults = Object.values(storeResultsMap)
         .map(store => ({
           ...store,
           availabilityScore: store.totalItems > 0 
             ? (store.availableItems / selectedItems.length) * 100 
             : 0
         }))
-        .filter(store => store.totalItems > 0) // Only show stores with matching items
-        .sort((a, b) => {
-          // Sort by availability score (higher is better), then by total available items
-          if (b.availabilityScore !== a.availabilityScore) {
-            return b.availabilityScore - a.availabilityScore;
+        .filter(store => store.totalItems > 0); // Only show stores with matching items
+
+      // Get user's current location and calculate distances using KNN
+      let results = baseResults;
+      try {
+        console.log('Getting current location for KNN distance calculations...');
+        const userLocation = await LocationService.getCurrentPosition();
+        
+        if (userLocation) {
+          console.log('Current user location:', userLocation);
+          
+          // Get store owner users (userTypeCode = 2) who represent stores
+          const { data: storeOwners, error: ownersError } = await supabase
+            .from('USER')
+            .select('userId, userTypeCode, latitude, longitude')
+            .eq('userTypeCode', 2)
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null);
+
+          if (ownersError) {
+            console.warn('Error fetching store owners for distance calculation:', ownersError);
+          } else if (storeOwners && storeOwners.length > 0) {
+            console.log(`Found ${storeOwners.length} store owners with locations`);
+            
+            // Calculate distances to all store owners
+            const storeDistances = storeOwners.map(owner => ({
+              userId: owner.userId,
+              userTypeCode: owner.userTypeCode,
+              latitude: owner.latitude,
+              longitude: owner.longitude,
+              distance: KNNService.calculateDistance(
+                userLocation.latitude, 
+                userLocation.longitude, 
+                owner.latitude, 
+                owner.longitude
+              )
+            }));
+
+            console.log('Store distances calculated:', storeDistances);
+
+            // Enhanced results with distance information
+            results = baseResults.map(store => {
+              // For now, assign random store owner to demonstrate distance calculation
+              // In a real system, you'd have a mapping between store IDs and store owners
+              const randomStoreOwner = storeDistances[store.storeId % storeDistances.length];
+              const distance = randomStoreOwner?.distance || 999;
+              const maxDistance = 50; // Maximum reasonable distance in km
+              const distanceScore = Math.max(0, 100 - (distance / maxDistance) * 100);
+
+              return {
+                ...store,
+                distance,
+                distanceScore
+              };
+            });
+
+            console.log('Results with distance calculations:', results);
           }
-          return b.availableItems - a.availableItems;
-        });
+        } else {
+          console.warn('Could not get user location for distance calculations');
+        }
+      } catch (locationError) {
+        console.warn('Error calculating distances:', locationError);
+      }
+
+      // Sort by combined score: availability (60%) + distance proximity (40%)
+      results.sort((a, b) => {
+        const scoreA = (a.availabilityScore * 0.6) + (a.distanceScore * 0.4);
+        const scoreB = (b.availabilityScore * 0.6) + (b.distanceScore * 0.4);
+        
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA; // Higher combined score first
+        }
+        
+        // Fallback to availability score if combined scores are equal
+        if (b.availabilityScore !== a.availabilityScore) {
+          return b.availabilityScore - a.availabilityScore;
+        }
+        
+        // Final fallback to distance (closer is better)
+        return (a.distance || 999) - (b.distance || 999);
+      });
 
       console.log('Store results:', results);
       setStoreResults(results);
@@ -229,6 +310,15 @@ const GroceryStoreResults: React.FC = () => {
                             <div>
                               <IonCardTitle>{store.storeName}</IonCardTitle>
                               <div className="store-rank">#{index + 1} Best Match</div>
+                              {store.distance !== undefined && (
+                                <div className="store-distance">
+                                  <IonIcon icon={locationOutline} style={{ fontSize: '0.8rem', marginRight: '4px' }} />
+                                  {store.distance < 1 
+                                    ? `${Math.round(store.distance * 1000)}m away`
+                                    : `${store.distance.toFixed(1)}km away`
+                                  }
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="availability-score">
@@ -241,6 +331,13 @@ const GroceryStoreResults: React.FC = () => {
                             <div className="score-label">
                               {getAvailabilityText(store.availabilityScore)}
                             </div>
+                            {store.distance !== undefined && (
+                              <div className="distance-score">
+                                <small style={{ color: '#666', fontSize: '0.7rem' }}>
+                                  Proximity: {Math.round(store.distanceScore)}%
+                                </small>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </IonCardHeader>

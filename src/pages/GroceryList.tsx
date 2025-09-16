@@ -21,7 +21,8 @@ import {
   cartOutline, 
   personOutline, 
   searchOutline,
-  storefrontOutline
+  storefrontOutline,
+  locationOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import './GroceryList.css';
@@ -301,7 +302,8 @@ const GroceryList: React.FC = () => {
             }}
           >
             <IonIcon icon={searchOutline} slot="start" />
-            Search Grocery
+            Search Nearby Stores
+            <IonIcon icon={locationOutline} slot="end" style={{ fontSize: '0.9rem', opacity: 0.8 }} />
           </IonButton>
         </div>
 

@@ -1,8 +1,44 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Hardcode values for mobile build debugging
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jugtklulvvpcpfsrdxom.supabase.co';
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1Z3RrbHVsdnZwY3Bmc3JkeG9tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2MzE1MzksImV4cCI6MjA3MjIwNzUzOX0.odMPsM_N9glo3J-1aUSA6OSlRGfVT5X5O2SSFvZa9CQ';
+
+// Detect mobile environment
+const isMobile = () => {
+  return window.location.protocol === 'capacitor:' || 
+         window.location.hostname === 'localhost' ||
+         'Capacitor' in window;
+};
+
+// Configure mobile-aware redirect URLs
+export const getRedirectUrl = (path: string) => {
+  if (isMobile()) {
+    return `com.groceryshop.app://${path}`;
+  } else {
+    return `${window.location.origin}/${path}`;
+  }
+};
+
+// Add error checking for environment variables
+console.log('Supabase URL:', supabaseUrl);
+console.log('Supabase Key exists:', !!supabaseKey);
+console.log('Mobile environment detected:', isMobile());
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase environment variables');
+  alert('Configuration error: Missing database credentials');
+}
+
+// Create client with mobile-aware configuration
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    flowType: 'pkce',
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
 // Example test query: fetch all users from USER table
 export async function fetchUsers() {
@@ -148,7 +184,7 @@ export async function RegisterUser(email: string, password: string, confirmPassw
     email,
     password,
     options: {
-      emailRedirectTo: `${window.location.origin}/verified`
+      emailRedirectTo: getRedirectUrl('verified')
     }
   });
 
@@ -194,10 +230,13 @@ export async function createAdminUser(email: string, password: string) {
 
 // OAuth sign in with Facebook
 export async function signInWithFacebook() {
+  const redirectTo = getRedirectUrl('oauth-callback');
+  console.log('Facebook OAuth redirect URL:', redirectTo);
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'facebook',
     options: {
-      redirectTo: `${window.location.origin}/oauth-callback`
+      redirectTo: redirectTo
     }
   });
 
@@ -211,10 +250,13 @@ export async function signInWithFacebook() {
 
 // OAuth sign in with Twitter
 export async function signInWithTwitter() {
+  const redirectTo = getRedirectUrl('oauth-callback');
+  console.log('Twitter OAuth redirect URL:', redirectTo);
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'twitter',
     options: {
-      redirectTo: `${window.location.origin}/oauth-callback`
+      redirectTo: redirectTo
     }
   });
 

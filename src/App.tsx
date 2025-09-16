@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { Route, useHistory } from 'react-router-dom';
 import {
   IonApp,
@@ -9,6 +9,7 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
+import { App as CapacitorApp } from '@capacitor/app';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -45,6 +46,7 @@ const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
 const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
+const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 
 setupIonicReact();
@@ -322,6 +324,87 @@ const ProtectedDTIRoute: React.FC = () => {
       </IonPage>
     }>
       <DTIDashboard />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedNearbyUsersRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.email) {
+          console.log('🔴 No session found, redirecting to login');
+          history.push('/login');
+          return;
+        }
+
+        // Get user details to pass userId to component
+        const { data: userData, error: userError } = await supabase
+          .from('USER')
+          .select('userId')
+          .eq('email', session.user.email)
+          .single();
+
+        if (userError || !userData) {
+          console.error('Error fetching user data:', userError);
+          history.push('/login');
+          return;
+        }
+
+        setCurrentUserId(userData.userId);
+        setIsAuthorized(true);
+        console.log('🟢 User authorized for nearby users feature:', session.user.email);
+      } catch (error) {
+        console.error('Error checking nearby users authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) {
+    return (
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  return isAuthorized ? (
+    <React.Suspense fallback={
+      <IonPage>
+        <IonContent>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <IonSpinner name="crescent" />
+          </div>
+        </IonContent>
+      </IonPage>
+    }>
+      <NearbyUsers currentUserId={currentUserId} />
     </React.Suspense>
   ) : null;
 };
@@ -700,6 +783,84 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log('🔐 Initializing global session monitoring...');
     
+    // Add deep link handler for OAuth callback
+    const setupDeepLinkHandler = async () => {
+      try {
+        // Listen for deep link events
+        const listener = CapacitorApp.addListener('appUrlOpen', (data) => {
+          console.log('Deep link opened:', data.url);
+          
+          // Check if this is an OAuth callback
+          if (data.url.includes('oauth-callback')) {
+            console.log('OAuth callback detected from deep link');
+            // Navigate to OAuth callback route to handle the auth result
+            window.location.href = '/oauth-callback';
+          }
+          // Check if this is a verified/confirmation callback
+          else if (data.url.includes('verified')) {
+            console.log('Email verification detected from deep link');
+            // Navigate to verified route to handle the confirmation
+            window.location.href = '/verified';
+          }
+          // Check if this is a password reset callback
+          else if (data.url.includes('reset-password')) {
+            console.log('Password reset detected from deep link');
+            // Navigate to reset password route
+            window.location.href = '/reset-password';
+          }
+          // Handle any other deep link paths
+          else {
+            console.log('Other deep link detected, extracting path');
+            try {
+              const url = new URL(data.url);
+              const path = url.pathname || '/';
+              console.log('Navigating to path:', path);
+              window.location.href = path;
+            } catch (error) {
+              console.error('Error parsing deep link URL:', error);
+              window.location.href = '/';
+            }
+          }
+        });
+
+        console.log('Deep link handler registered');
+        
+        // Check if app was opened with a URL (cold start)
+        const urlInfo = await CapacitorApp.getLaunchUrl();
+        if (urlInfo?.url) {
+          console.log('App launched with URL:', urlInfo.url);
+          
+          if (urlInfo.url.includes('oauth-callback')) {
+            console.log('App launched with OAuth callback URL');
+            window.location.href = '/oauth-callback';
+          } else if (urlInfo.url.includes('verified')) {
+            console.log('App launched with email verification URL');
+            window.location.href = '/verified';
+          } else if (urlInfo.url.includes('reset-password')) {
+            console.log('App launched with password reset URL');
+            window.location.href = '/reset-password';
+          } else {
+            console.log('App launched with other deep link URL');
+            try {
+              const url = new URL(urlInfo.url);
+              const path = url.pathname || '/';
+              console.log('Navigating to path:', path);
+              window.location.href = path;
+            } catch (error) {
+              console.error('Error parsing launch URL:', error);
+            }
+          }
+        }
+
+        return listener;
+      } catch (error) {
+        console.error('Error setting up deep link handler:', error);
+        return null;
+      }
+    };
+
+    setupDeepLinkHandler();
+    
     // Check initial session
     const checkInitialSession = async () => {
       try {
@@ -797,6 +958,9 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/dti-dashboard">
             <ProtectedDTIRoute />
+          </Route>
+          <Route exact path="/nearby-users">
+            <ProtectedNearbyUsersRoute />
           </Route>
         </IonRouterOutlet>
       </IonReactRouter>
