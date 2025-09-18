@@ -214,7 +214,7 @@ const GroceryStoreResults: React.FC = () => {
       }
 
       // Sort by combined score: availability (60%) + distance proximity (40%)
-      results.sort((a, b) => {
+  results = [...results].sort((a, b) => {
         const scoreA = (a.availabilityScore * 0.6) + (a.distanceScore * 0.4);
         const scoreB = (b.availabilityScore * 0.6) + (b.distanceScore * 0.4);
         

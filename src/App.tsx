@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Route, useHistory } from 'react-router-dom';
 import {
   IonApp,
@@ -48,6 +48,9 @@ const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
+const Checkout = React.lazy(() => import('./pages/Checkout'));
+const AddressSelection = React.lazy(() => import('./pages/AddressSelection'));
+const AddAddress = React.lazy(() => import('./pages/AddAddress'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 import { LocationRequirementService } from './services/locationRequirementService';
 
@@ -780,6 +783,129 @@ const ProtectedGroceryStoreResultsRoute: React.FC = () => {
   ) : null;
 };
 
+const ProtectedCheckoutRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.email) {
+          history.push('/login');
+          return;
+        }
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking checkout authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) return (
+    <IonPage>
+      <IonContent>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <IonSpinner name="crescent" />
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+
+  return isAuthorized ? (
+    <React.Suspense fallback={<IonPage><IonContent /></IonPage>}> 
+      <Checkout />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedAddressSelectionRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.email) {
+          history.push('/login');
+          return;
+        }
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking address selection authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) return (
+    <IonPage>
+      <IonContent>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <IonSpinner name="crescent" />
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+
+  return isAuthorized ? (
+    <React.Suspense fallback={<IonPage><IonContent /></IonPage>}> 
+      <AddressSelection />
+    </React.Suspense>
+  ) : null;
+};
+
+const ProtectedAddAddressRoute: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const history = useHistory();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.email) {
+          history.push('/login');
+          return;
+        }
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('❌ Error checking add-address authorization:', error);
+        history.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkAuth();
+  }, [history]);
+
+  if (isLoading) return (
+    <IonPage>
+      <IonContent>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <IonSpinner name="crescent" />
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+
+  return isAuthorized ? (
+    <React.Suspense fallback={<IonPage><IonContent /></IonPage>}> 
+      <AddAddress />
+    </React.Suspense>
+  ) : null;
+};
+
 const App: React.FC = () => {
   const [isLocationReady, setIsLocationReady] = useState(false);
   const [isLocationChecking, setIsLocationChecking] = useState(true);
@@ -813,8 +939,20 @@ const App: React.FC = () => {
       try {
         // Listen for deep link events
         const listener = CapacitorApp.addListener('appUrlOpen', (data) => {
-          console.log('Deep link opened:', data.url);
-          
+          // Log raw deep link payload for debugging (exact string received from OS)
+          console.log('Deep link opened (raw):', data.url);
+
+          // Try to parse URL components for easier inspection
+          try {
+            const parsed = new URL(data.url);
+            console.log('Deep link parsed -> protocol:', parsed.protocol, 'host:', parsed.host, 'pathname:', parsed.pathname, 'search:', parsed.search, 'hash:', parsed.hash);
+            // Also log full search/hash param objects
+            console.log('Deep link query params:', Object.fromEntries(new URLSearchParams(parsed.search)));
+            console.log('Deep link hash params:', Object.fromEntries(new URLSearchParams(parsed.hash.substring(1))));
+          } catch (err) {
+            console.warn('Could not parse deep link as URL, it may be a custom scheme:', err);
+          }
+
           // Check if this is an OAuth callback
           if (data.url.includes('oauth-callback')) {
             console.log('OAuth callback detected from deep link');
@@ -853,8 +991,16 @@ const App: React.FC = () => {
         // Check if app was opened with a URL (cold start)
         const urlInfo = await CapacitorApp.getLaunchUrl();
         if (urlInfo?.url) {
-          console.log('App launched with URL:', urlInfo.url);
-          
+          console.log('App launched with URL (cold start raw):', urlInfo.url);
+          try {
+            const parsed = new URL(urlInfo.url);
+            console.log('Launch URL parsed -> protocol:', parsed.protocol, 'host:', parsed.host, 'pathname:', parsed.pathname, 'search:', parsed.search, 'hash:', parsed.hash);
+            console.log('Launch URL query params:', Object.fromEntries(new URLSearchParams(parsed.search)));
+            console.log('Launch URL hash params:', Object.fromEntries(new URLSearchParams(parsed.hash.substring(1))));
+          } catch (err) {
+            console.warn('Could not parse launch URL as standard URL; it may be a custom scheme:', err);
+          }
+
           if (urlInfo.url.includes('oauth-callback')) {
             console.log('App launched with OAuth callback URL');
             window.location.href = '/oauth-callback';
@@ -1003,6 +1149,15 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/cart">
             <ProtectedCartRoute />
+          </Route>
+          <Route exact path="/checkout">
+            <ProtectedCheckoutRoute />
+          </Route>
+          <Route exact path="/address-selection">
+            <ProtectedAddressSelectionRoute />
+          </Route>
+          <Route exact path="/add-address">
+            <ProtectedAddAddressRoute />
           </Route>
           <Route exact path="/grocery-list">
             <ProtectedGroceryListRoute />

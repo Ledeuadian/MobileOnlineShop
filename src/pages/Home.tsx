@@ -71,7 +71,7 @@ const Home: React.FC = () => {
   
   // Toast state
   const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const [toastMessage] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
 
   // Helper function to validate URLs
@@ -193,7 +193,7 @@ const Home: React.FC = () => {
         }));
 
         // Sort by distance and take top 5
-        const nearestStores = storesWithDistance
+        const nearestStores = [...storesWithDistance]
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 5)
           .map(store => ({
@@ -237,7 +237,7 @@ const Home: React.FC = () => {
         'Bakery', 'Beverages', 'Snacks', 'Frozen', 'Pantry'
       ];
       const count = Math.floor(Math.random() * 3) + 2; // 2-4 categories
-      const shuffled = allCategories.sort(() => 0.5 - Math.random());
+  const shuffled = [...allCategories].sort(() => 0.5 - Math.random());
       return shuffled.slice(0, count);
     };
 
@@ -382,113 +382,113 @@ const Home: React.FC = () => {
   };
 
   const confirmAddToCart = async () => {
-    if (selectedProduct) {
-      try {
-        // Get current authenticated user
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          console.error('User not authenticated');
-          return;
-        }
+    if (!selectedProduct) return;
 
-        // Get the userId from public.USER table based on auth user email
-        const { data: userData, error: userError } = await supabase
-          .from('USER')
-          .select('userId')
-          .eq('email', user.email)
-          .single();
-
-        if (userError || !userData) {
-          console.error('Error getting user data:', userError);
-          return;
-        }
-
-        const publicUserId = userData.userId;
-
-        // Check if user already has a cart, if not create one
-        const { data: existingCart } = await supabase
-          .from('CARTS')
-          .select('cartId')
-          .eq('userId', publicUserId)
-          .maybeSingle();
-
-        let cartId;
-        
-        if (!existingCart) {
-          // Create new cart for user
-          const { data: newCart, error: cartError } = await supabase
-            .from('CARTS')
-            .insert({
-              userId: publicUserId
-            })
-            .select('cartId')
-            .single();
-
-          if (cartError) {
-            console.error('Error creating cart:', cartError);
-            return;
-          }
-          
-          cartId = newCart.cartId;
-        } else {
-          cartId = existingCart.cartId;
-        }
-
-        // Check if item already exists in cart
-        const { data: existingCartItem } = await supabase
-          .from('CART_ITEMS')
-          .select('cartItemId, quantity')
-          .eq('cartId', cartId)
-          .eq('storeItemId', selectedProduct.storeItemId)
-          .maybeSingle();
-
-        if (existingCartItem) {
-          // Update existing cart item
-          const newQuantity = existingCartItem.quantity + quantity;
-          const newSubTotal = selectedProduct.price * newQuantity;
-
-          const { error: updateError } = await supabase
-            .from('CART_ITEMS')
-            .update({
-              quantity: newQuantity,
-              subTotal: newSubTotal
-            })
-            .eq('cartItemId', existingCartItem.cartItemId);
-
-          if (updateError) {
-            console.error('Error updating cart item:', updateError);
-            return;
-          }
-
-          console.log(`Updated ${selectedProduct.name} quantity to ${newQuantity} in cart`);
-        } else {
-          // Create new cart item
-          const { error: itemError } = await supabase
-            .from('CART_ITEMS')
-            .insert({
-              cartId: cartId,
-              storeItemId: selectedProduct.storeItemId,
-              quantity: quantity,
-              subTotal: subtotal
-            });
-
-          if (itemError) {
-            console.error('Error adding item to cart:', itemError);
-            return;
-          }
-
-          console.log(`Added ${quantity} of ${selectedProduct.name} to cart. Subtotal: ₱${subtotal}`);
-        }
-
-        // Update cart count after successful operation
-        const updatedCount = await getCartItemCount();
-        setCartItemCount(updatedCount);
-
-        closeModal();
-      } catch (error) {
-        console.error('Error in confirmAddToCart:', error);
+    // Helper: get the public userId from auth user
+    const getPublicUserId = async (): Promise<string | null> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('User not authenticated');
+        return null;
       }
+
+      const { data: userData, error: userError } = await supabase
+        .from('USER')
+        .select('userId')
+        .eq('email', user.email)
+        .single();
+
+      if (userError || !userData) {
+        console.error('Error getting user data:', userError);
+        return null;
+      }
+
+      return userData.userId;
+    };
+
+    // Helper: get or create a cartId for the given user
+    const getOrCreateCartId = async (publicUserId: string): Promise<string | null> => {
+      const { data: existingCart } = await supabase
+        .from('CARTS')
+        .select('cartId')
+        .eq('userId', publicUserId)
+        .maybeSingle();
+
+  if (existingCart?.cartId) return existingCart.cartId;
+
+      const createResult = await supabase
+        .from('CARTS')
+        .insert({ userId: publicUserId })
+        .select('cartId')
+        .single();
+
+      const newCart = createResult.data;
+      const cartError = createResult.error;
+
+      if (cartError || !newCart) {
+        console.error('Error creating cart:', cartError);
+        return null;
+      }
+
+      return newCart.cartId;
+    };
+
+    // Helper: add or update cart item
+    const addOrUpdateCartItem = async (cartId: string) => {
+      const { data: existingCartItem } = await supabase
+        .from('CART_ITEMS')
+        .select('cartItemId, quantity')
+        .eq('cartId', cartId)
+        .eq('storeItemId', selectedProduct.storeItemId)
+        .maybeSingle();
+
+      if (existingCartItem) {
+        const newQuantity = existingCartItem.quantity + quantity;
+        const newSubTotal = selectedProduct.price * newQuantity;
+
+        const { error: updateError } = await supabase
+          .from('CART_ITEMS')
+          .update({ quantity: newQuantity, subTotal: newSubTotal })
+          .eq('cartItemId', existingCartItem.cartItemId);
+
+        if (updateError) {
+          console.error('Error updating cart item:', updateError);
+          return false;
+        }
+
+        console.log(`Updated ${selectedProduct.name} quantity to ${newQuantity} in cart`);
+        return true;
+      }
+
+      const { error: itemError } = await supabase
+        .from('CART_ITEMS')
+        .insert({ cartId, storeItemId: selectedProduct.storeItemId, quantity, subTotal: subtotal });
+
+      if (itemError) {
+        console.error('Error adding item to cart:', itemError);
+        return false;
+      }
+
+      console.log(`Added ${quantity} of ${selectedProduct.name} to cart. Subtotal: ₱${subtotal}`);
+      return true;
+    };
+
+    try {
+      const publicUserId = await getPublicUserId();
+      if (!publicUserId) return;
+
+      const cartId = await getOrCreateCartId(publicUserId);
+      if (!cartId) return;
+
+      const ok = await addOrUpdateCartItem(cartId);
+      if (!ok) return;
+
+      const updatedCount = await getCartItemCount();
+      setCartItemCount(updatedCount);
+
+      closeModal();
+    } catch (error) {
+      console.error('Error in confirmAddToCart:', error);
     }
   };
 
@@ -637,8 +637,8 @@ const Home: React.FC = () => {
                         }
                       </p>
                       <div className="store-categories">
-                        {store.categories?.slice(0, 3).map((category, index) => (
-                          <span key={index} className="category-tag">{category}</span>
+                        {store.categories?.slice(0, 3).map((category) => (
+                          <span key={category} className="category-tag">{category}</span>
                         ))}
                       </div>
                     </div>

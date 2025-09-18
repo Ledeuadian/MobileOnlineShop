@@ -50,34 +50,34 @@ const NearbyUsers: React.FC<NearbyUsersProps> = ({ currentUserId }) => {
   const [presentAlert] = useIonAlert();
   const history = useHistory();
 
-  const checkLocationPermission = async () => {
-    const hasPermission = await LocationService.checkLocationPermissions();
-    setLocationPermission(hasPermission);
-    
-    if (!hasPermission) {
-      presentAlert({
-        header: 'Location Permission Required',
-        message: 'This feature requires location access to find nearby users. Please grant location permission.',
-        buttons: [
-          {
-            text: 'Cancel',
-            role: 'cancel'
-          },
-          {
-            text: 'Request Permission',
-            handler: async () => {
-              const location = await LocationService.getCurrentPosition();
-              setLocationPermission(!!location);
-            }
-          }
-        ]
-      });
-    }
-  };
-
   useEffect(() => {
+    const checkLocationPermission = async () => {
+      const hasPermission = await LocationService.checkLocationPermissions();
+      setLocationPermission(hasPermission);
+      
+      if (!hasPermission) {
+        presentAlert({
+          header: 'Location Permission Required',
+          message: 'This feature requires location access to find nearby users. Please grant location permission.',
+          buttons: [
+            {
+              text: 'Cancel',
+              role: 'cancel'
+            },
+            {
+              text: 'Request Permission',
+              handler: async () => {
+                const location = await LocationService.getCurrentPosition();
+                setLocationPermission(!!location);
+              }
+            }
+          ]
+        });
+      }
+    };
+
     checkLocationPermission();
-  }, [presentAlert, checkLocationPermission]);
+  }, [presentAlert]);
 
   const findNearbyUsers = async (refresh: boolean = false) => {
     if (!currentUserId) {

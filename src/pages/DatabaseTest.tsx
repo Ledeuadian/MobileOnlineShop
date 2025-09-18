@@ -14,9 +14,16 @@ import {
   IonSpinner
 } from '@ionic/react';
 
+interface DatabaseTestResults {
+  allCategories?: string[];
+  categoryDetails?: Array<{ category: string; count?: number | null; sampleItems?: Array<{ name?: string; price?: number; unit?: string }> }>;
+  beveragesTest?: { count: number; items?: unknown[]; error?: unknown };
+  errors?: { categories?: unknown; beverages?: unknown };
+}
+
 const DatabaseTest: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<DatabaseTestResults | null>(null);
 
   const testDatabase = async () => {
     setLoading(true);
@@ -73,7 +80,7 @@ const DatabaseTest: React.FC = () => {
       
     } catch (error) {
       console.error('Database test error:', error);
-      setResults({ error: error });
+      setResults({ errors: { categories: error } });
     } finally {
       setLoading(false);
     }

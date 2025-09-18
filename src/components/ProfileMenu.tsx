@@ -7,6 +7,7 @@ import './ProfileMenu.css';
 interface ProfileMenuProps {
   firstName?: string;
   lastName?: string;
+  // Optional prop accepted for compatibility; not used locally to avoid unused-variable lint
   passwordMasked?: string;
   contactNumber?: string;
 }
@@ -14,7 +15,6 @@ interface ProfileMenuProps {
 const ProfileMenu: React.FC<ProfileMenuProps> = ({
   firstName = '',
   lastName = '',
-  passwordMasked = '',
   contactNumber = ''
 }) => {
   const [first, setFirst] = useState(firstName);
@@ -181,6 +181,10 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
             className="profile-menu-input"
           />
         </div>
+              {/* Show masked password if available (for display only) */}
+              <div style={{ marginBottom: '12px', color: '#666', fontSize: '0.9rem' }}>
+                {localStorage.getItem('userPasswordMasked') ? `Password: ${localStorage.getItem('userPasswordMasked')}` : null}
+              </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <IonIcon icon={callOutline} className="profile-menu-icon" />
           <IonInput

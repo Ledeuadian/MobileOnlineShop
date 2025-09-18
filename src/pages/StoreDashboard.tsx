@@ -86,16 +86,6 @@ interface ProductTypeSuggestion {
   matchScore?: number;
 }
 
-interface ProductTypeSuggestion {
-  productTypeId: number;
-  Name: string;
-  Brand: string;
-  Variant: string;
-  Unit: string;
-  Quantity: number;
-  matchScore?: number;
-}
-
 const StoreDashboard: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
@@ -143,7 +133,6 @@ const StoreDashboard: React.FC = () => {
   
   // Product Type Matching States
   const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
-  const [showProductTypeSuggestions, setShowProductTypeSuggestions] = useState(false);
   const [selectedProductTypeId, setSelectedProductTypeId] = useState<number | null>(null);
   // Categories for items
   const categories = [
@@ -315,6 +304,10 @@ const StoreDashboard: React.FC = () => {
     // Show success message
     setAlertMessage(`Location saved successfully!\nLatitude: ${lat.toFixed(6)}\nLongitude: ${lng.toFixed(6)}`);
     setShowAlert(true);
+    // Persist coordinates to GROCERY_STORE immediately for this owner
+    persistCoordinatesToStore(lat, lng).catch(err => {
+      console.error('Error persisting coordinates after map pin:', err);
+    });
   };
 
   // Enhanced coordinate saving from Google Maps
@@ -338,45 +331,98 @@ I'll automatically extract and save them for you!
     
     const coordinates = prompt('📍 Paste your Google Maps coordinates here:');
     if (coordinates) {
-      // Enhanced parsing to handle multiple formats
-      const cleanCoords = coordinates
-        .replace(/[^\d.,-\s]/g, '') // Remove everything except numbers, dots, commas, spaces
-        .replace(/\s+/g, ' ') // Normalize spaces
-        .trim();
-      
-      // Try different splitting methods
-      let coordArray: string[] = [];
-      if (cleanCoords.includes(',')) {
-        coordArray = cleanCoords.split(',');
-      } else if (cleanCoords.includes(' ')) {
-        coordArray = cleanCoords.split(' ').filter(x => x.length > 0);
-      }
-      
-      if (coordArray.length >= 2) {
-        const lat = parseFloat(coordArray[0].trim());
-        const lng = parseFloat(coordArray[1].trim());
-        
-        if (!isNaN(lat) && !isNaN(lng) && 
-            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          setStoreInfo({
-            ...storeInfo,
-            latitude: lat,
-            longitude: lng
-          });
-          alert(`✅ COORDINATES SAVED SUCCESSFULLY!
-          
-📍 Location Details:
-• Latitude: ${lat}
-• Longitude: ${lng}
-• Location: ${lat >= 0 ? 'North' : 'South'} ${Math.abs(lat)}°, ${lng >= 0 ? 'East' : 'West'} ${Math.abs(lng)}°
-
-Your store location has been updated!`);
-        } else {
-          alert('❌ Invalid coordinates. Please ensure:\n• Latitude is between -90 and 90\n• Longitude is between -180 and 180\n• Format: "15.425259, 120.938294"');
-        }
+      // parse using helper
+      const parsed = parseCoordsFromString(coordinates);
+      if (parsed) {
+        setStoreInfo({
+          ...storeInfo,
+          latitude: parsed.lat,
+          longitude: parsed.lng
+        });
+        alert(`✅ COORDINATES SAVED SUCCESSFULLY!\n\n📍 Location Details:\n• Latitude: ${parsed.lat}\n• Longitude: ${parsed.lng}\n\nYour store location has been updated!`);
+        // Persist coordinates to store immediately
+        persistCoordinatesToStore(parsed.lat, parsed.lng).catch(err => console.error('Error persisting pasted coordinates:', err));
       } else {
         alert('❌ Could not parse coordinates. Please use format:\n"15.425259, 120.938294"');
       }
+    }
+  };
+
+  // Helper: parse coordinate string into lat/lng or null
+  const parseCoordsFromString = (input: string): { lat: number; lng: number } | null => {
+    if (!input) return null;
+    const clean = input.replace(/[^0-9.,\-\s]/g, '').replace(/\s+/g, ' ').trim();
+    let parts: string[] = [];
+    if (clean.includes(',')) parts = clean.split(',').map(s => s.trim()).filter(Boolean);
+    else if (clean.includes(' ')) parts = clean.split(' ').map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+  };
+
+  // Persist latitude/longitude to GROCERY_STORE for the current user's store
+  const persistCoordinatesToStore = async (lat: number, lng: number) => {
+    try {
+      if (!currentUser) {
+        console.warn('No authenticated user - cannot persist store coordinates');
+        return;
+      }
+
+      // Try to find existing store for this owner
+      const { data: existingStore, error: selectError } = await supabase
+        .from('GROCERY_STORE')
+        .select('*')
+        .eq('owner_id', currentUser.id)
+        .single();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        console.error('Error finding existing store for owner:', selectError);
+      }
+
+      const payload: Partial<StoreInfo> & { owner_id: string; updated_at: string } = {
+        latitude: lat,
+        longitude: lng,
+        owner_id: currentUser.id,
+        updated_at: new Date().toISOString()
+      };
+
+      let result;
+      if (existingStore) {
+        // Update the existing store row
+        result = await supabase
+          .from('GROCERY_STORE')
+          .update({ latitude: lat, longitude: lng, updated_at: payload.updated_at })
+          .eq('owner_id', currentUser.id)
+          .select()
+          .single();
+      } else {
+        // Insert a minimal new store row with coordinates and owner_id
+        result = await supabase
+          .from('GROCERY_STORE')
+          .insert([payload])
+          .select()
+          .single();
+      }
+
+      if (result?.error) {
+        throw result.error;
+      }
+
+      if (result?.data) {
+        // Map db fields back to frontend storeInfo
+        const mapped = {
+          ...result.data,
+          store_address: result.data.location || storeInfo.store_address,
+          latitude: result.data.latitude ?? lat,
+          longitude: result.data.longitude ?? lng
+        };
+        setStoreInfo(mapped);
+      }
+    } catch (err) {
+      console.error('Error persisting coordinates to GROCERY_STORE:', err);
     }
   };
 
@@ -715,7 +761,7 @@ Your store location has been updated!`);
         const best = suggestedProductTypes.reduce((bestSoFar, cur) => {
           return (cur.matchScore ?? 0) > (bestSoFar.matchScore ?? 0) ? cur : bestSoFar;
         }, suggestedProductTypes[0]);
-        if (best && best.productTypeId) {
+        if (best?.productTypeId) {
           productTypeId = best.productTypeId;
           console.log('🔎 Auto-assigned productTypeId from suggestions:', productTypeId);
         }
@@ -771,9 +817,8 @@ Your store location has been updated!`);
         throw result.error;
       }
 
-      const successMessage = editingItem 
-        ? 'Item updated successfully!' 
-        : `Item added successfully!${productTypeId ? ' (Auto-matched with standard product type)' : ' (No standard product type found)'}`;
+      const messageSuffix = productTypeId ? ' (Auto-matched with standard product type)' : ' (No standard product type found)';
+      const successMessage = editingItem ? 'Item updated successfully!' : `Item added successfully!${messageSuffix}`;
       
       setAlertMessage(successMessage);
       setShowAlert(true);
@@ -862,7 +907,6 @@ Your store location has been updated!`);
   const getProductTypeSuggestions = async (itemName: string) => {
     if (!itemName || itemName.length < 2) {
       setSuggestedProductTypes([]);
-      setShowProductTypeSuggestions(false);
       return;
     }
 
@@ -874,8 +918,7 @@ Your store location has been updated!`);
       description: newItem.description
     }, 5);
 
-    setSuggestedProductTypes(suggestions);
-    setShowProductTypeSuggestions(suggestions.length > 0);
+  setSuggestedProductTypes(suggestions);
   };
 
   const closeItemModal = () => {
@@ -891,10 +934,9 @@ Your store location has been updated!`);
       fileInput.value = '';
     }
     
-    // Reset product type selection
-    setSuggestedProductTypes([]);
-    setShowProductTypeSuggestions(false);
-    setSelectedProductTypeId(null);
+  // Reset product type selection
+  setSuggestedProductTypes([]);
+  setSelectedProductTypeId(null);
   };
 
   const handleLogout = async () => {

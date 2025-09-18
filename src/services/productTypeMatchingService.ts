@@ -249,7 +249,7 @@ export class ProductTypeMatchingService {
         matchScore: this.calculateMatchScore(storeItem, productType)
       }));
 
-      return scoredProducts
+      return [...scoredProducts]
         .sort((a, b) => b.matchScore - a.matchScore)
         .slice(0, limit);
     } catch (error) {

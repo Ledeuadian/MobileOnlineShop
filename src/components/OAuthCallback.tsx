@@ -23,7 +23,32 @@ const OAuthCallback: React.FC = () => {
         console.log('URL search params:', window.location.search);
         console.log('URL hash:', window.location.hash);
         setProcessed(true);
-        
+
+        // Helper: dump parsed URL params (search + hash) and combined view for easier debugging
+        const dumpUrlDetails = () => {
+          try {
+            const raw = window.location.href;
+            const parsedSearch = Object.fromEntries(new URLSearchParams(window.location.search));
+            const parsedHash = Object.fromEntries(new URLSearchParams(window.location.hash.substring(1)));
+            const combined = { ...parsedSearch, ...parsedHash };
+            console.log('OAuth URL dump -> raw:', raw);
+            console.log('OAuth URL dump -> parsedSearch:', parsedSearch);
+            console.log('OAuth URL dump -> parsedHash:', parsedHash);
+            console.log('OAuth URL dump -> combinedParams:', combined);
+            // If state is present, log partially for easier correlation (avoid logging very long values)
+            if (combined.state) {
+              console.log('OAuth state (truncated):', String(combined.state).slice(0, 200));
+            }
+            return { parsedSearch, parsedHash, combined };
+          } catch (err) {
+            console.error('Error dumping URL details:', err);
+            return { parsedSearch: {}, parsedHash: {}, combined: {} };
+          }
+        };
+
+  // Execute URL dump for logs (no need to keep the returned object here)
+  void dumpUrlDetails();
+
         // Check URL for OAuth parameters (both query and hash)
         const urlParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.substring(1));

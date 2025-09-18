@@ -1039,7 +1039,8 @@ const DTIDashboard: React.FC = () => {
                           value={srpPrices[product.productTypeId] || ''}
                           placeholder="0.00"
                           onIonInput={(e) => {
-                            const newPrice = parseFloat(e.detail.value! as string) || 0;
+                            const raw = e.detail.value;
+                            const newPrice = parseFloat((raw ?? '').toString()) || 0;
                             setSrpPrices(prev => ({
                               ...prev,
                               [product.productTypeId]: newPrice

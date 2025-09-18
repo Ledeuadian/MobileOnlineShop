@@ -109,7 +109,8 @@ export class KNNService {
           )
         }))
         .filter(user => user.distance <= maxDistance)
-        .sort((a, b) => a.distance - b.distance)
+  .slice()
+  .sort((a, b) => a.distance - b.distance)
         .slice(0, k);
 
       console.log(`Returning ${usersWithDistance.length} nearest users`);
@@ -167,7 +168,8 @@ export class KNNService {
           )
         }))
         .filter(user => user.distance <= radiusKm)
-        .sort((a, b) => a.distance - b.distance);
+  .slice()
+  .sort((a, b) => a.distance - b.distance);
 
       console.log(`Returning ${usersInRadius.length} users within radius`);
       return usersInRadius;
@@ -217,7 +219,8 @@ export class KNNService {
           )
         }))
         .filter(store => store.distance <= maxDistance)
-        .sort((a, b) => a.distance - b.distance)
+  .slice()
+  .sort((a, b) => a.distance - b.distance)
         .slice(0, k);
 
       console.log(`Returning ${storesWithDistance.length} nearest stores`);

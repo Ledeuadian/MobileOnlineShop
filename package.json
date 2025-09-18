@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test.e2e": "cypress run",
     "test.unit": "vitest",
-    "lint": "eslint",
+    "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js,.jsx",
     "populate-suarez": "node populate_suarez_final.js",
     "android:build": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@capacitor/android": "7.4.3",
     "@capacitor/app": "7.0.2",
+    "@capacitor/browser": "^7.0.2",
     "@capacitor/core": "7.4.3",
     "@capacitor/geolocation": "^7.1.5",
     "@capacitor/haptics": "7.0.2",

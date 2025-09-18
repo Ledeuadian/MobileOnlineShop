@@ -369,9 +369,7 @@ const Cart: React.FC = () => {
     return cartItems.length;
   };
 
-  const getTotalQuantity = () => {
-    return cartItems.reduce((total, item) => total + item.quantity, 0);
-  };
+  // getTotalQuantity removed because it was unused; derive totals from cartItems when needed
 
   const groupItemsByStore = () => {
     return cartItems.reduce((groups, item) => {
@@ -554,6 +552,7 @@ const Cart: React.FC = () => {
                     expand="block" 
                     color="success"
                     className="checkout-btn"
+                    onClick={() => history.push('/checkout')}
                   >
                     <IonIcon icon={checkmarkCircle} slot="start" />
                     Proceed to Checkout
