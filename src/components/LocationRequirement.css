@@ -1,0 +1,99 @@
+.location-requirement-content {
+  --padding-top: 20px;
+  --padding-bottom: 20px;
+  --padding-start: 16px;
+  --padding-end: 16px;
+}
+
+.location-requirement-container {
+  max-width: 500px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.location-status-card {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.location-status-header {
+  padding-bottom: 8px;
+}
+
+.location-status-icon {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 60px;
+}
+
+.location-status-title {
+  color: var(--ion-color-primary);
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.location-status-message {
+  margin-bottom: 20px;
+  color: var(--ion-color-medium);
+  line-height: 1.4;
+}
+
+.location-action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.location-status-card ion-button {
+  margin: 4px 0;
+}
+
+.location-status-card ion-spinner {
+  transform: scale(1.5);
+}
+
+/* Success animation */
+.location-status-card[data-status="success"] {
+  animation: successPulse 0.6s ease-in-out;
+}
+
+@keyframes successPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Icon color overrides */
+.location-status-icon ion-icon[color="success"] {
+  color: var(--ion-color-success);
+}
+
+.location-status-icon ion-icon[color="warning"] {
+  color: var(--ion-color-warning);
+}
+
+.location-status-icon ion-icon[color="medium"] {
+  color: var(--ion-color-medium);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .location-requirement-container {
+    padding: 0 8px;
+  }
+  
+  .location-status-title {
+    font-size: 1.2rem;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .location-status-message {
+    color: var(--ion-color-medium-shade);
+  }
+}

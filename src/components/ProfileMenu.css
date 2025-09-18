@@ -72,3 +72,20 @@ ion-menu[menu-id="profile-menu"] {
   width: 100px;
   font-size: 14px;
 }
+
+/* Change Password button styling */
+.profile-menu-change-password-btn {
+  --border-radius: 6px;
+  --border-color: #3880ff;
+  --color: #3880ff;
+  --background: transparent;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 0;
+  flex: 1;
+}
+
+.profile-menu-change-password-btn:hover {
+  --background: rgba(56, 128, 255, 0.05);
+}

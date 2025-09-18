@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import { supabase, checkUserApprovalStatus } from '../services/supabaseService';
+import { LocationService } from '../services/locationService';
+import { KNNService } from '../services/knnService';
 import {
   IonPage, 
   IonContent, 
@@ -20,9 +22,11 @@ import {
   IonItem,
   IonLabel,
   IonToast,
-  IonBadge
+  IonBadge,
+  IonSpinner,
+  IonFooter
 } from '@ionic/react';
-import { star, heart, cartOutline, locationOutline, storefrontOutline, personOutline, peopleOutline, add, remove, close } from 'ionicons/icons';
+import { star, heart, cartOutline, locationOutline, storefrontOutline, personOutline, add, remove, close } from 'ionicons/icons';
 import ProfileMenu from '../components/ProfileMenu';
 import './Home.css';
 
@@ -37,11 +41,27 @@ interface FeaturedProduct {
   storeId: number;
 }
 
+interface NearbyStore {
+  storeId: number;
+  name: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  distance?: number;
+  store_phone?: string;
+  store_email?: string;
+  rating?: number;
+  estimatedDeliveryTime?: string;
+  categories?: string[];
+}
+
 const Home: React.FC = () => {
   console.log('Home component mounting...');
   const history = useHistory();
   const [searchText, setSearchText] = useState('');
   const [featuredProducts, setFeaturedProducts] = useState<FeaturedProduct[]>([]);
+  const [nearbyStores, setNearbyStores] = useState<NearbyStore[]>([]);
+  const [loadingStores, setLoadingStores] = useState(true);
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -115,6 +135,121 @@ const Home: React.FC = () => {
       }
     };
 
+    const loadNearbyStores = async () => {
+      try {
+        setLoadingStores(true);
+        console.log('🏪 Loading nearby stores...');
+
+        // First, try to get user's location
+        const userLocation = await LocationService.getCurrentPosition();
+        
+        if (!userLocation) {
+          console.warn('⚠️ Could not get user location, showing all stores');
+          // Fallback: show all stores without distance calculation
+          const { data: stores, error } = await supabase
+            .from('GROCERY_STORE')
+            .select('storeId, name, location, latitude, longitude, store_phone, store_email')
+            .limit(5);
+
+          if (stores && !error) {
+            const storesWithDefaults: NearbyStore[] = stores.map((store, index) => ({
+              ...store,
+              rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+              estimatedDeliveryTime: `${15 + index * 5}-${20 + index * 5} min delivery`,
+              categories: getRandomCategories()
+            }));
+            setNearbyStores(storesWithDefaults);
+          }
+          return;
+        }
+
+        // Get stores with location data
+        const { data: stores, error: storesError } = await supabase
+          .from('GROCERY_STORE')
+          .select('storeId, name, location, latitude, longitude, store_phone, store_email')
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null);
+
+        if (storesError) {
+          console.error('Error fetching stores:', storesError);
+          return;
+        }
+
+        if (!stores || stores.length === 0) {
+          console.log('No stores found with location data');
+          setNearbyStores([]);
+          return;
+        }
+
+        // Calculate distances using KNN service
+        const storesWithDistance = stores.map(store => ({
+          ...store,
+          distance: KNNService.calculateDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            store.latitude,
+            store.longitude
+          )
+        }));
+
+        // Sort by distance and take top 5
+        const nearestStores = storesWithDistance
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 5)
+          .map(store => ({
+            ...store,
+            rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+            estimatedDeliveryTime: getEstimatedDeliveryTime(store.distance),
+            categories: getRandomCategories()
+          }));
+
+        console.log('🎯 Found nearby stores:', nearestStores);
+        setNearbyStores(nearestStores);
+
+      } catch (error) {
+        console.error('❌ Error loading nearby stores:', error);
+        // Fallback: show some stores without location
+        const { data: stores } = await supabase
+          .from('GROCERY_STORE')
+          .select('storeId, name, location, store_phone, store_email')
+          .limit(3);
+
+        if (stores) {
+          const fallbackStores: NearbyStore[] = stores.map((store, index) => ({
+            ...store,
+            latitude: 0,
+            longitude: 0,
+            rating: 4.0 + Math.random() * 0.9,
+            estimatedDeliveryTime: `${20 + index * 5}-${25 + index * 5} min delivery`,
+            categories: getRandomCategories()
+          }));
+          setNearbyStores(fallbackStores);
+        }
+      } finally {
+        setLoadingStores(false);
+      }
+    };
+
+    // Helper function to get random categories for stores
+    const getRandomCategories = (): string[] => {
+      const allCategories = [
+        'Fruits', 'Vegetables', 'Dairy', 'Meat', 'Seafood', 
+        'Bakery', 'Beverages', 'Snacks', 'Frozen', 'Pantry'
+      ];
+      const count = Math.floor(Math.random() * 3) + 2; // 2-4 categories
+      const shuffled = allCategories.sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, count);
+    };
+
+    // Helper function to estimate delivery time based on distance
+    const getEstimatedDeliveryTime = (distance: number): string => {
+      const baseTime = 15;
+      const timePerKm = 5;
+      const minTime = baseTime + Math.floor(distance * timePerKm);
+      const maxTime = minTime + 10;
+      return `${minTime}-${maxTime} min delivery`;
+    };
+
     const loadCartCount = async () => {
       const count = await getCartItemCount();
       setCartItemCount(count);
@@ -122,6 +257,7 @@ const Home: React.FC = () => {
 
     checkAuthAndRedirect();
     loadFeaturedProducts();
+    loadNearbyStores();
     loadCartCount();
 
     // Also refresh cart count when window gets focus (user returns to tab/app)
@@ -227,10 +363,6 @@ const Home: React.FC = () => {
 
   const navigateToGroceryList = () => {
     history.push('/grocery-list');
-  };
-
-  const navigateToNearbyUsers = () => {
-    history.push('/nearby-users');
   };
 
   const incrementQuantity = () => {
@@ -481,88 +613,85 @@ const Home: React.FC = () => {
         <div className="section">
           <h3 className="section-title">Nearby Stores</h3>
           <div className="stores-list">
-            <IonCard className="store-card">
-              <IonCardContent>
-                <div className="store-info">
-                  <div className="store-header">
-                    <h4>FreshMart Supermarket</h4>
-                    <div className="store-rating">
-                      <IonIcon icon={star} color="warning" />
-                      <span>4.8</span>
+            {loadingStores ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                <IonSpinner name="crescent" />
+              </div>
+            ) : nearbyStores.length > 0 ? (
+              nearbyStores.map((store) => (
+                <IonCard key={store.storeId} className="store-card">
+                  <IonCardContent>
+                    <div className="store-info">
+                      <div className="store-header">
+                        <h4>{store.name}</h4>
+                        <div className="store-rating">
+                          <IonIcon icon={star} color="warning" />
+                          <span>{store.rating?.toFixed(1)}</span>
+                        </div>
+                      </div>
+                      <p className="store-details">
+                        <IonIcon icon={locationOutline} />
+                        {store.distance ? 
+                          `${store.distance.toFixed(1)} km away • ${store.estimatedDeliveryTime}` :
+                          `${store.location} • ${store.estimatedDeliveryTime}`
+                        }
+                      </p>
+                      <div className="store-categories">
+                        {store.categories?.slice(0, 3).map((category, index) => (
+                          <span key={index} className="category-tag">{category}</span>
+                        ))}
+                      </div>
                     </div>
+                  </IonCardContent>
+                </IonCard>
+              ))
+            ) : (
+              <IonCard className="store-card">
+                <IonCardContent>
+                  <div style={{ textAlign: 'center', padding: '1rem', color: '#666' }}>
+                    <IonIcon icon={storefrontOutline} style={{ fontSize: '2rem', marginBottom: '0.5rem' }} />
+                    <p>No nearby stores found</p>
+                    <p style={{ fontSize: '0.9rem' }}>Check your location settings or try again later</p>
                   </div>
-                  <p className="store-details">
-                    <IonIcon icon={locationOutline} />
-                    0.5 km away • 15-20 min delivery
-                  </p>
-                  <div className="store-categories">
-                    <span className="category-tag">Fruits</span>
-                    <span className="category-tag">Vegetables</span>
-                    <span className="category-tag">Dairy</span>
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard className="store-card">
-              <IonCardContent>
-                <div className="store-info">
-                  <div className="store-header">
-                    <h4>Golden Bakery</h4>
-                    <div className="store-rating">
-                      <IonIcon icon={star} color="warning" />
-                      <span>4.9</span>
-                    </div>
-                  </div>
-                  <p className="store-details">
-                    <IonIcon icon={locationOutline} />
-                    0.8 km away • 20-25 min delivery
-                  </p>
-                  <div className="store-categories">
-                    <span className="category-tag">Bread</span>
-                    <span className="category-tag">Pastries</span>
-                    <span className="category-tag">Cakes</span>
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
+                </IonCardContent>
+              </IonCard>
+            )}
           </div>
         </div>
 
         {/* Bottom Menu Bar */}
-        <div className="bottom-bar">
-          <button className="bottom-bar-btn" onClick={navigateToGroceryList}>
-            <IonIcon icon={storefrontOutline} className="shop-btn" />
-          </button>
-          <button className="bottom-bar-btn" onClick={navigateToCart} style={{ position: 'relative' }}>
-            <IonIcon icon={cartOutline} className="cart-btn" />
-            {cartItemCount > 0 && (
-              <IonBadge 
-                color="danger" 
-                style={{
-                  position: 'absolute',
-                  top: '-8px',
-                  right: '-8px',
-                  minWidth: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  fontSize: '12px',
-                  fontWeight: 'bold'
-                }}
-              >
-                {cartItemCount}
-              </IonBadge>
-            )}
-          </button>
-          <button className="bottom-bar-btn" onClick={navigateToNearbyUsers}>
-            <IonIcon icon={peopleOutline} className="nearby-btn" />
-          </button>
-          <IonMenuToggle menu="profile-menu">
-            <button className="bottom-bar-btn" onClick={() => console.log('Profile button clicked')}>
-              <IonIcon icon={personOutline} className="profile-btn" />
+        <IonFooter>
+          <div className="bottom-bar">
+            <button className="bottom-bar-btn" onClick={navigateToGroceryList}>
+              <IonIcon icon={storefrontOutline} className="shop-btn" />
             </button>
-          </IonMenuToggle>
-        </div>
+            <button className="bottom-bar-btn" onClick={navigateToCart} style={{ position: 'relative' }}>
+              <IonIcon icon={cartOutline} className="cart-btn" />
+              {cartItemCount > 0 && (
+                <IonBadge 
+                  color="danger" 
+                  style={{
+                    position: 'absolute',
+                    top: '-8px',
+                    right: '-8px',
+                    minWidth: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {cartItemCount}
+                </IonBadge>
+              )}
+            </button>
+            <IonMenuToggle menu="profile-menu">
+              <button className="bottom-bar-btn" onClick={() => console.log('Profile button clicked')}>
+                <IonIcon icon={personOutline} className="profile-btn" />
+              </button>
+            </IonMenuToggle>
+          </div>
+        </IonFooter>
       </IonContent>
 
       {/* Add to Cart Modal */}

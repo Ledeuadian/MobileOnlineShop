@@ -37,9 +37,14 @@ import {
   save,
   close,
   cube,
-  logOutOutline
+  logOutOutline,
+  navigate,
+  locationOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
+import { LocationService } from '../services/locationService';
+import { ProductTypeMatchingService } from '../services/productTypeMatchingService';
+import LocationPicker from '../components/LocationPicker';
 import './StoreDashboard.css';
 
 interface StoreInfo {
@@ -52,6 +57,8 @@ interface StoreInfo {
   store_phone: string;
   store_email: string;
   store_image_url: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface StockItem {
@@ -61,10 +68,32 @@ interface StockItem {
   price: number;
   availability: number;
   category: string;
+  variant?: string;
   unit?: string;
   brand?: string;
   item_image_url?: string;
   storeId: number;
+  productTypeId?: number; // Add productTypeId field
+}
+
+interface ProductTypeSuggestion {
+  productTypeId: number;
+  Name: string;
+  Brand: string;
+  Variant: string;
+  Unit: string;
+  Quantity: number;
+  matchScore?: number;
+}
+
+interface ProductTypeSuggestion {
+  productTypeId: number;
+  Name: string;
+  Brand: string;
+  Variant: string;
+  Unit: string;
+  Quantity: number;
+  matchScore?: number;
 }
 
 const StoreDashboard: React.FC = () => {
@@ -75,7 +104,9 @@ const StoreDashboard: React.FC = () => {
     store_address: '',
     store_phone: '',
     store_email: '',
-    store_image_url: ''
+    store_image_url: '',
+    latitude: undefined,
+    longitude: undefined
   });
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
@@ -87,6 +118,7 @@ const StoreDashboard: React.FC = () => {
     price: 0,
     availability: 0,
     category: '',
+    variant: '',
     unit: '',
     brand: '',
     storeId: 0
@@ -99,12 +131,20 @@ const StoreDashboard: React.FC = () => {
   // Item image upload states
   const [selectedItemImage, setSelectedItemImage] = useState<File | null>(null);
   const [itemUploadProgress, setItemUploadProgress] = useState(0);
+  
+  // Map and geolocation states
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
   const [isItemUploading, setIsItemUploading] = useState(false);
   const [itemImagePreview, setItemImagePreview] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{id: string; email?: string} | null>(null);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
-
+  
+  // Product Type Matching States
+  const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
+  const [showProductTypeSuggestions, setShowProductTypeSuggestions] = useState(false);
+  const [selectedProductTypeId, setSelectedProductTypeId] = useState<number | null>(null);
   // Categories for items
   const categories = [
     'Fruits & Vegetables',
@@ -153,13 +193,29 @@ const StoreDashboard: React.FC = () => {
         // Map database column names to frontend field names
         const mappedData = {
           ...data,
-          store_address: data.location // Map location to store_address
+          store_address: data.location, // Map location to store_address
+          latitude: data.latitude,
+          longitude: data.longitude
         };
         setStoreInfo(mappedData);
       }
     } catch (error) {
       console.error('Error loading store info:', error);
     }
+  };
+
+  // Helper to check if required fields are filled before showing product type selector
+  const allFieldsFilled = () => {
+    return [
+      newItem.name,
+      newItem.description,
+      newItem.price,
+      newItem.category,
+      newItem.unit,
+      newItem.brand,
+      newItem.variant,
+      newItem.availability
+    ].every(val => val !== '' && val !== null && typeof val !== 'undefined' && !(typeof val === 'number' && isNaN(val)));
   };
 
   const loadStockItems = async (userId: string) => {
@@ -191,6 +247,139 @@ const StoreDashboard: React.FC = () => {
     }
   };
 
+  // Geocode address to get latitude and longitude
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    setIsGeocodingAddress(true);
+    try {
+      // Use a geocoding service (using a free service like OpenStreetMap Nominatim)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Geocoding request failed');
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        return { lat, lng };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error geocoding address:', error);
+      return null;
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  };
+
+  // Handle address geocoding
+  const handleGeocodeAddress = async () => {
+    if (!storeInfo.store_address.trim()) {
+      alert('Please enter an address first');
+      return;
+    }
+
+    const coordinates = await geocodeAddress(storeInfo.store_address);
+    if (coordinates) {
+      setStoreInfo({
+        ...storeInfo,
+        latitude: coordinates.lat,
+        longitude: coordinates.lng
+      });
+      alert(`Address geocoded successfully!\nLatitude: ${coordinates.lat}\nLongitude: ${coordinates.lng}`);
+    } else {
+      alert('Could not find coordinates for this address. Please try a more specific address or use the map picker.');
+    }
+  };
+
+  // Open Google Maps for location picking with enhanced coordinate extraction
+  // Open interactive location picker
+  const openGoogleMapsPicker = () => {
+    setIsMapModalOpen(true);
+  };
+
+  // Handle location selection from interactive map
+  const handleLocationSelected = (lat: number, lng: number) => {
+    // Update the store info with selected coordinates
+    setStoreInfo(prev => ({
+      ...prev,
+      latitude: lat,
+      longitude: lng
+    }));
+    
+    // Show success message
+    setAlertMessage(`Location saved successfully!\nLatitude: ${lat.toFixed(6)}\nLongitude: ${lng.toFixed(6)}`);
+    setShowAlert(true);
+  };
+
+  // Enhanced coordinate saving from Google Maps
+  const saveCoordinatesFromGoogleMaps = () => {
+    const coordinateDialog = `
+🎯 SAVE COORDINATES FROM GOOGLE MAPS
+
+From your Google Maps window, you should now have coordinates like:
+"15.425259, 120.938294"
+
+📋 Paste them here in ANY of these formats:
+• "15.425259, 120.938294"
+• "15.425259,120.938294" 
+• "15.425259 120.938294"
+• Just the numbers with comma/space
+
+I'll automatically extract and save them for you!
+    `;
+    
+    alert(coordinateDialog);
+    
+    const coordinates = prompt('📍 Paste your Google Maps coordinates here:');
+    if (coordinates) {
+      // Enhanced parsing to handle multiple formats
+      const cleanCoords = coordinates
+        .replace(/[^\d.,-\s]/g, '') // Remove everything except numbers, dots, commas, spaces
+        .replace(/\s+/g, ' ') // Normalize spaces
+        .trim();
+      
+      // Try different splitting methods
+      let coordArray: string[] = [];
+      if (cleanCoords.includes(',')) {
+        coordArray = cleanCoords.split(',');
+      } else if (cleanCoords.includes(' ')) {
+        coordArray = cleanCoords.split(' ').filter(x => x.length > 0);
+      }
+      
+      if (coordArray.length >= 2) {
+        const lat = parseFloat(coordArray[0].trim());
+        const lng = parseFloat(coordArray[1].trim());
+        
+        if (!isNaN(lat) && !isNaN(lng) && 
+            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          setStoreInfo({
+            ...storeInfo,
+            latitude: lat,
+            longitude: lng
+          });
+          alert(`✅ COORDINATES SAVED SUCCESSFULLY!
+          
+📍 Location Details:
+• Latitude: ${lat}
+• Longitude: ${lng}
+• Location: ${lat >= 0 ? 'North' : 'South'} ${Math.abs(lat)}°, ${lng >= 0 ? 'East' : 'West'} ${Math.abs(lng)}°
+
+Your store location has been updated!`);
+        } else {
+          alert('❌ Invalid coordinates. Please ensure:\n• Latitude is between -90 and 90\n• Longitude is between -180 and 180\n• Format: "15.425259, 120.938294"');
+        }
+      } else {
+        alert('❌ Could not parse coordinates. Please use format:\n"15.425259, 120.938294"');
+      }
+    }
+  };
+
   const saveStoreInfo = async () => {
     try {
       if (!currentUser) return;
@@ -204,6 +393,8 @@ const StoreDashboard: React.FC = () => {
         store_phone: storeInfo.store_phone,
         store_email: storeInfo.store_email,
         store_image_url: storeInfo.store_image_url,
+        latitude: storeInfo.latitude,
+        longitude: storeInfo.longitude,
         owner_id: currentUser.id,
         updated_at: new Date().toISOString()
       };
@@ -227,7 +418,9 @@ const StoreDashboard: React.FC = () => {
         // Map database column names back to frontend field names
         const mappedData = {
           ...result.data,
-          store_address: result.data.location // Map location back to store_address
+          store_address: result.data.location, // Map location back to store_address
+          latitude: result.data.latitude,
+          longitude: result.data.longitude
         };
         setStoreInfo(mappedData);
       }
@@ -501,11 +694,11 @@ const StoreDashboard: React.FC = () => {
   const saveStockItem = async () => {
     try {
       console.log('🧪 Checking store info:', storeInfo);
-      console.log('� Store info keys:', Object.keys(storeInfo));
+      console.log('📝 Store info keys:', Object.keys(storeInfo));
       
       // Check for store ID using multiple possible column names
       const storeId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
-      console.log('� Found store ID:', storeId);
+      console.log('🏪 Found store ID:', storeId);
       
       if (!storeId) {
         console.log('❌ No store ID found');
@@ -514,15 +707,49 @@ const StoreDashboard: React.FC = () => {
         return;
       }
 
+      // 🎯 Determine Product Type ID (manual selection takes priority)
+      let productTypeId = selectedProductTypeId;
+
+      // If user didn't manually pick and we have suggestedProductTypes, pick the best-scoring one
+      if (!productTypeId && suggestedProductTypes && suggestedProductTypes.length > 0) {
+        const best = suggestedProductTypes.reduce((bestSoFar, cur) => {
+          return (cur.matchScore ?? 0) > (bestSoFar.matchScore ?? 0) ? cur : bestSoFar;
+        }, suggestedProductTypes[0]);
+        if (best && best.productTypeId) {
+          productTypeId = best.productTypeId;
+          console.log('🔎 Auto-assigned productTypeId from suggestions:', productTypeId);
+        }
+      }
+
+      // Fallback to service-based matching if still not assigned
+      if (!productTypeId) {
+        console.log('🔍 No manual selection or suggestion, finding matching product type for:', newItem.name);
+        productTypeId = await ProductTypeMatchingService.findBestMatch({
+          name: newItem.name,
+          brand: newItem.brand || '',
+          category: newItem.category,
+          unit: newItem.unit || '',
+          description: newItem.description
+        });
+      }
+
+      if (productTypeId) {
+        console.log('✅ Product Type ID assigned:', productTypeId);
+      } else {
+        console.log('⚠️ No matching product type found - item will be saved without productTypeId');
+      }
+
       const currentStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
       const itemData = {
         ...newItem,
         storeId: currentStoreId,
+        productTypeId: productTypeId, // 🎯 Automatically set productTypeId
         updated_at: new Date().toISOString()
       };
 
       console.log('🖼️ Item data being saved:', itemData);
       console.log('📸 Image URL in data:', itemData.item_image_url);
+      console.log('🎯 Product Type ID assigned:', itemData.productTypeId);
 
       let result;
       if (editingItem) {
@@ -544,7 +771,11 @@ const StoreDashboard: React.FC = () => {
         throw result.error;
       }
 
-      setAlertMessage(`Item ${editingItem ? 'updated' : 'added'} successfully!`);
+      const successMessage = editingItem 
+        ? 'Item updated successfully!' 
+        : `Item added successfully!${productTypeId ? ' (Auto-matched with standard product type)' : ' (No standard product type found)'}`;
+      
+      setAlertMessage(successMessage);
       setShowAlert(true);
       setIsItemModalOpen(false);
       setEditingItem(null);
@@ -555,6 +786,7 @@ const StoreDashboard: React.FC = () => {
         price: 0,
         availability: 0,
         category: '',
+        variant: '',
         unit: '',
         brand: '',
         storeId: resetStoreId || 0
@@ -613,6 +845,7 @@ const StoreDashboard: React.FC = () => {
       price: 0,
       availability: 0,
       category: '',
+      variant: '',
       unit: '',
       brand: '',
       storeId: addItemStoreId || 0
@@ -623,6 +856,26 @@ const StoreDashboard: React.FC = () => {
     setIsItemUploading(false);
     setItemUploadProgress(0);
     setIsItemModalOpen(true);
+  };
+
+  // Helper function to get product type suggestions
+  const getProductTypeSuggestions = async (itemName: string) => {
+    if (!itemName || itemName.length < 2) {
+      setSuggestedProductTypes([]);
+      setShowProductTypeSuggestions(false);
+      return;
+    }
+
+    const suggestions = await ProductTypeMatchingService.getSimilarProducts({
+      name: itemName,
+      brand: newItem.brand || '',
+      category: newItem.category,
+      unit: newItem.unit || '',
+      description: newItem.description
+    }, 5);
+
+    setSuggestedProductTypes(suggestions);
+    setShowProductTypeSuggestions(suggestions.length > 0);
   };
 
   const closeItemModal = () => {
@@ -637,6 +890,11 @@ const StoreDashboard: React.FC = () => {
     if (fileInput) {
       fileInput.value = '';
     }
+    
+    // Reset product type selection
+    setSuggestedProductTypes([]);
+    setShowProductTypeSuggestions(false);
+    setSelectedProductTypeId(null);
   };
 
   const handleLogout = async () => {
@@ -876,7 +1134,7 @@ const StoreDashboard: React.FC = () => {
           </IonHeader>
           <IonContent>
             <div className="modal-content">
-              <IonItem>
+              <IonItem className="compact-item">
                 <IonLabel position="stacked">Store Name</IonLabel>
                 <IonInput
                   value={storeInfo.name}
@@ -884,17 +1142,26 @@ const StoreDashboard: React.FC = () => {
                   placeholder="Enter store name"
                 />
               </IonItem>
-              <IonItem>
+              
+              <IonItem className="compact-item">
                 <IonLabel position="stacked">Description</IonLabel>
                 <IonTextarea
                   value={storeInfo.store_description}
                   onIonInput={(e) => setStoreInfo({...storeInfo, store_description: e.detail.value!})}
                   placeholder="Enter store description"
-                  rows={3}
+                  rows={2}
                 />
               </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Address</IonLabel>
+              
+              <IonItem className="compact-item">
+                <IonLabel position="stacked">
+                  Address
+                  {storeInfo.latitude && storeInfo.longitude && (
+                    <small style={{ color: '#28a745', fontSize: '11px', fontWeight: 'normal' }}>
+                      <br />📍 Lat: {storeInfo.latitude.toFixed(4)}, Lng: {storeInfo.longitude.toFixed(4)}
+                    </small>
+                  )}
+                </IonLabel>
                 <IonTextarea
                   value={storeInfo.store_address}
                   onIonInput={(e) => setStoreInfo({...storeInfo, store_address: e.detail.value!})}
@@ -902,24 +1169,74 @@ const StoreDashboard: React.FC = () => {
                   rows={2}
                 />
               </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Phone</IonLabel>
-                <IonInput
-                  value={storeInfo.store_phone}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, store_phone: e.detail.value!})}
-                  placeholder="Enter phone number"
-                />
+              
+              {/* Address Action Buttons */}
+              <IonItem className="button-group-item">
+                <IonGrid style={{ padding: '0' }}>
+                  <IonRow>
+                    <IonCol size="6" style={{ padding: '0 4px 0 0' }}>
+                      <IonButton 
+                        expand="block" 
+                        fill="outline" 
+                        size="small"
+                        color="primary"
+                        onClick={handleGeocodeAddress}
+                        disabled={isGeocodingAddress || !storeInfo.store_address.trim()}
+                      >
+                        <IonIcon icon={locationOutline} slot="start" />
+                        {isGeocodingAddress ? 'Finding...' : 'Get Coordinates'}
+                      </IonButton>
+                    </IonCol>
+                    <IonCol size="6" style={{ padding: '0 0 0 4px' }}>
+                      <IonButton 
+                        expand="block" 
+                        fill="solid" 
+                        size="small"
+                        color="tertiary"
+                        onClick={() => setIsMapModalOpen(true)}
+                        style={{
+                          '--background': '#FF69B4',
+                          '--background-activated': '#FF1493',
+                          '--background-hover': '#FF1493',
+                          '--color': 'white'
+                        }}
+                      >
+                        <IonIcon icon={navigate} slot="start" />
+                        Pin on Map
+                      </IonButton>
+                    </IonCol>
+                  </IonRow>
+                </IonGrid>
               </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Email</IonLabel>
-                <IonInput
-                  value={storeInfo.store_email}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
-                  placeholder="Enter email address"
-                  type="email"
-                />
-              </IonItem>
-              <IonItem>
+              
+              <IonGrid style={{ padding: '0', marginTop: '8px' }}>
+                <IonRow>
+                  <IonCol size="6" style={{ padding: '0 4px 0 0' }}>
+                    <IonItem className="compact-item">
+                      <IonLabel position="stacked">Phone</IonLabel>
+                      <IonInput
+                        value={storeInfo.store_phone}
+                        onIonInput={(e) => setStoreInfo({...storeInfo, store_phone: e.detail.value!})}
+                        placeholder="Enter phone number"
+                        inputMode="tel"
+                      />
+                    </IonItem>
+                  </IonCol>
+                  <IonCol size="6" style={{ padding: '0 0 0 4px' }}>
+                    <IonItem className="compact-item">
+                      <IonLabel position="stacked">Email</IonLabel>
+                      <IonInput
+                        value={storeInfo.store_email}
+                        onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
+                        placeholder="Enter email address"
+                        type="email"
+                      />
+                    </IonItem>
+                  </IonCol>
+                </IonRow>
+              </IonGrid>
+              
+              <IonItem className="compact-item">
                 <IonLabel position="stacked">Store Image</IonLabel>
                 <div style={{ width: '100%', padding: '10px 0' }}>
                   {/* Current Image Preview */}
@@ -975,18 +1292,6 @@ const StoreDashboard: React.FC = () => {
                       Upload Image
                     </IonButton>
                   )}
-                  
-                  {/* Current URL Display */}
-                  {storeInfo.store_image_url && (
-                    <p style={{ 
-                      fontSize: '12px', 
-                      color: '#666', 
-                      marginTop: '10px',
-                      wordBreak: 'break-all'
-                    }}>
-                      Current: {storeInfo.store_image_url}
-                    </p>
-                  )}
                 </div>
               </IonItem>
               <IonButton expand="block" onClick={saveStoreInfo} className="save-button">
@@ -994,6 +1299,204 @@ const StoreDashboard: React.FC = () => {
                 Save Store Information
               </IonButton>
             </div>
+          </IonContent>
+        </IonModal>
+
+        {/* Map Location Picker Modal */}
+        <IonModal isOpen={isMapModalOpen} onDidDismiss={() => setIsMapModalOpen(false)}>
+          <IonHeader>
+            <IonToolbar>
+              <IonTitle>Select Location</IonTitle>
+              <IonButtons slot="end">
+                <IonButton onClick={() => setIsMapModalOpen(false)}>
+                  <IonIcon icon={close} />
+                </IonButton>
+              </IonButtons>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding">
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <IonIcon 
+                icon={navigate} 
+                style={{ 
+                  fontSize: '48px', 
+                  color: '#FF69B4',
+                  marginBottom: '10px' 
+                }} 
+              />
+              <h2>Pin Your Location</h2>
+              <p style={{ color: '#666', fontSize: '0.9rem' }}>
+                You can either get your current location or manually enter coordinates.
+              </p>
+            </div>
+
+            <IonItem>
+              <IonLabel position="stacked">Current Address</IonLabel>
+              <IonTextarea
+                value={storeInfo.store_address}
+                readonly
+                rows={2}
+                style={{ opacity: 0.7 }}
+              />
+            </IonItem>
+
+            <IonItem>
+              <IonLabel position="stacked">Latitude</IonLabel>
+              <IonInput
+                type="number"
+                value={storeInfo.latitude?.toString() || ''}
+                placeholder="e.g., 14.5995"
+                onIonInput={(e) => {
+                  const lat = parseFloat(e.detail.value!);
+                  if (!isNaN(lat)) {
+                    setStoreInfo({...storeInfo, latitude: lat});
+                  }
+                }}
+              />
+            </IonItem>
+
+            <IonItem>
+              <IonLabel position="stacked">Longitude</IonLabel>
+              <IonInput
+                type="number"
+                value={storeInfo.longitude?.toString() || ''}
+                placeholder="e.g., 120.9842"
+                onIonInput={(e) => {
+                  const lng = parseFloat(e.detail.value!);
+                  if (!isNaN(lng)) {
+                    setStoreInfo({...storeInfo, longitude: lng});
+                  }
+                }}
+              />
+            </IonItem>
+
+            {/* Enhanced coordinate paste helpers */}
+            <div style={{ margin: '15px 0' }}>
+              <IonButton 
+                expand="block" 
+                fill="solid"
+                color="success"
+                size="default"
+                onClick={saveCoordinatesFromGoogleMaps}
+                style={{ 
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
+                }}
+              >
+                📍 Save from Google Maps
+              </IonButton>
+              
+              <IonButton 
+                expand="block" 
+                fill="clear"
+                size="small"
+                onClick={() => {
+                  const coordinates = prompt('Paste coordinates from any source\n(Format: "14.5995, 120.9842" or "14.5995,120.9842")');
+                  if (coordinates) {
+                    // Clean and parse coordinates
+                    const cleanCoords = coordinates.replace(/[^\d.,-]/g, '').replace(/\s+/g, '');
+                    const coordArray = cleanCoords.split(',');
+                    
+                    if (coordArray.length >= 2) {
+                      const lat = parseFloat(coordArray[0]);
+                      const lng = parseFloat(coordArray[1]);
+                      
+                      if (!isNaN(lat) && !isNaN(lng)) {
+                        setStoreInfo({
+                          ...storeInfo,
+                          latitude: lat,
+                          longitude: lng
+                        });
+                        alert(`Coordinates set successfully!\nLatitude: ${lat}\nLongitude: ${lng}`);
+                      } else {
+                        alert('Invalid coordinate format. Please use format: "14.5995, 120.9842"');
+                      }
+                    } else {
+                      alert('Please provide both latitude and longitude separated by a comma');
+                    }
+                  }
+                }}
+                style={{ 
+                  fontSize: '0.9rem',
+                  '--color': '#666'
+                }}
+              >
+                📋 Quick Paste (Any Source)
+              </IonButton>
+            </div>
+
+            <div style={{ margin: '20px 0' }}>
+              <IonButton 
+                expand="block" 
+                fill="outline"
+                onClick={async () => {
+                  try {
+                    const position = await LocationService.getCurrentPosition();
+                    if (position) {
+                      setStoreInfo({
+                        ...storeInfo,
+                        latitude: position.latitude,
+                        longitude: position.longitude
+                      });
+                      alert('Current location captured successfully!');
+                    } else {
+                      alert('Could not get current location. Please ensure location permissions are enabled.');
+                    }
+                  } catch (error) {
+                    console.error('Location error:', error);
+                    alert('Could not get current location. Please ensure location permissions are enabled.');
+                  }
+                }}
+              >
+                <IonIcon icon={locationOutline} slot="start" />
+                Use Current Location
+              </IonButton>
+              
+              <IonButton 
+                expand="block" 
+                color="secondary"
+                fill="outline"
+                onClick={openGoogleMapsPicker}
+                style={{ marginTop: '10px' }}
+              >
+                <IonIcon icon={navigate} slot="start" />
+                Pick on Google Maps
+              </IonButton>
+            </div>
+
+            <div style={{ 
+              backgroundColor: '#f0f8ff', 
+              padding: '15px', 
+              borderRadius: '8px',
+              marginTop: '20px',
+              fontSize: '0.85rem',
+              color: '#666'
+            }}>
+              <strong>🎯 Easy Location Setup:</strong>
+              <ul style={{ margin: '8px 0 0 15px', paddingLeft: 0 }}>
+                <li><strong>RECOMMENDED:</strong> Click "Pick on Google Maps" → Use "📍 Save from Google Maps" button</li>
+                <li>Or click "Use Current Location" for your GPS coordinates</li>
+                <li>Or manually enter coordinates if you know them</li>
+                <li>Philippines coordinates: Latitude ~5-19°N, Longitude ~117-127°E</li>
+              </ul>
+            </div>
+
+            <IonButton 
+              expand="block" 
+              color="success"
+              onClick={() => {
+                if (storeInfo.latitude && storeInfo.longitude) {
+                  setIsMapModalOpen(false);
+                  alert(`Location set successfully!\nLatitude: ${storeInfo.latitude}\nLongitude: ${storeInfo.longitude}`);
+                } else {
+                  alert('Please set both latitude and longitude coordinates.');
+                }
+              }}
+              style={{ marginTop: '20px' }}
+            >
+              <IonIcon icon={save} slot="start" />
+              Save Location
+            </IonButton>
           </IonContent>
         </IonModal>
 
@@ -1015,10 +1518,16 @@ const StoreDashboard: React.FC = () => {
                 <IonLabel position="stacked">Item Name</IonLabel>
                 <IonInput
                   value={newItem.name}
-                  onIonInput={(e) => setNewItem({...newItem, name: e.detail.value!})}
+                  onIonInput={(e) => {
+                    setNewItem({...newItem, name: e.detail.value!});
+                    // Get product type suggestions as user types
+                    getProductTypeSuggestions(e.detail.value!);
+                  }}
                   placeholder="Enter item name"
                 />
               </IonItem>
+              
+              {/* Product Type Suggestions (moved below Quantity) - removed from here */}
               <IonItem>
                 <IonLabel position="stacked">Description</IonLabel>
                 <IonTextarea
@@ -1026,14 +1535,6 @@ const StoreDashboard: React.FC = () => {
                   onIonInput={(e) => setNewItem({...newItem, description: e.detail.value!})}
                   placeholder="Enter item description"
                   rows={3}
-                />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Brand Name</IonLabel>
-                <IonInput
-                  value={newItem.brand}
-                  onIonInput={(e) => setNewItem({...newItem, brand: e.detail.value!})}
-                  placeholder="Enter brand name"
                 />
               </IonItem>
               <IonItem>
@@ -1053,6 +1554,22 @@ const StoreDashboard: React.FC = () => {
                 </IonSelect>
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Brand Name</IonLabel>
+                <IonInput
+                  value={newItem.brand}
+                  onIonInput={(e) => setNewItem({...newItem, brand: e.detail.value!})}
+                  placeholder="Enter brand name"
+                />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Variant</IonLabel>
+                <IonInput
+                  value={newItem.variant}
+                  onIonInput={(e) => setNewItem({...newItem, variant: e.detail.value!})}
+                  placeholder="Enter variant (e.g., Original, Spicy, Large)"
+                />
+              </IonItem>
+              <IonItem>
                 <IonLabel position="stacked">Price (₱)</IonLabel>
                 <IonInput
                   type="number"
@@ -1070,13 +1587,33 @@ const StoreDashboard: React.FC = () => {
                   interface="popover"
                   fill="outline"
                 >
-                  <IonSelectOption value="kg">KG</IonSelectOption>
-                  <IonSelectOption value="pcs">Pcs</IonSelectOption>
-                  <IonSelectOption value="liter">Liter</IonSelectOption>
-                  <IonSelectOption value="pack">Pack</IonSelectOption>
-                  <IonSelectOption value="grams">g(grams)</IonSelectOption>
+                  <IonSelectOption value="kg">kg (kilogram)</IonSelectOption>
+                  <IonSelectOption value="g">g (gram)</IonSelectOption>
+                  <IonSelectOption value="mg">mg (milligram)</IonSelectOption>
+                  <IonSelectOption value="liter">L (liter)</IonSelectOption>
+                  <IonSelectOption value="ml">ml (milliliter)</IonSelectOption>
+                  <IonSelectOption value="can">can</IonSelectOption>
                   <IonSelectOption value="bottle">bottle</IonSelectOption>
-                  <IonSelectOption value="milliliters">ml</IonSelectOption>
+                  <IonSelectOption value="jar">jar</IonSelectOption>
+                  <IonSelectOption value="pack">pack</IonSelectOption>
+                  <IonSelectOption value="sachet">sachet</IonSelectOption>
+                  <IonSelectOption value="pouch">pouch</IonSelectOption>
+                  <IonSelectOption value="box">box</IonSelectOption>
+                  <IonSelectOption value="bag">bag</IonSelectOption>
+                  <IonSelectOption value="pc">piece (pc)</IonSelectOption>
+                  <IonSelectOption value="pcs">pcs</IonSelectOption>
+                  <IonSelectOption value="dozen">dozen</IonSelectOption>
+                  <IonSelectOption value="bundle">bundle</IonSelectOption>
+                  <IonSelectOption value="bunch">bunch</IonSelectOption>
+                  <IonSelectOption value="slice">slice</IonSelectOption>
+                  <IonSelectOption value="stick">stick</IonSelectOption>
+                  <IonSelectOption value="cup">cup</IonSelectOption>
+                  <IonSelectOption value="tub">tub</IonSelectOption>
+                  <IonSelectOption value="roll">roll</IonSelectOption>
+                  <IonSelectOption value="tray">tray</IonSelectOption>
+                  <IonSelectOption value="bar">bar</IonSelectOption>
+                  <IonSelectOption value="tablet">tablet</IonSelectOption>
+                  <IonSelectOption value="strip">strip</IonSelectOption>
                 </IonSelect>
               </IonItem>
               <IonItem>
@@ -1088,6 +1625,28 @@ const StoreDashboard: React.FC = () => {
                   placeholder="Enter quantity"
                 />
               </IonItem>
+              {/* Suggested Product Types - shown only when all required fields are filled */}
+              {allFieldsFilled() && suggestedProductTypes && suggestedProductTypes.length > 0 && (
+                <IonItem style={{ marginTop: '10px' }}>
+                  <IonLabel position="stacked">
+                    🎯 Suggested Standard Product Types (for price monitoring)
+                  </IonLabel>
+                  <IonSelect
+                    value={selectedProductTypeId ?? ''}
+                    onIonChange={(e) => setSelectedProductTypeId(e.detail.value === '' ? null : e.detail.value)}
+                    placeholder="None (Auto-select best match)"
+                    interface="popover"
+                    fill="outline"
+                  >
+                    <IonSelectOption value="">None (Auto-select best match)</IonSelectOption>
+                    {suggestedProductTypes.map((product: ProductTypeSuggestion) => (
+                      <IonSelectOption key={product.productTypeId} value={product.productTypeId}>
+                        {product.Name} - {product.Brand} ({product.Unit}) {product.matchScore && `- ${Math.round(product.matchScore * 100)}% match`}
+                      </IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
+              )}
               <IonItem>
                 <IonLabel position="stacked">Item Image</IonLabel>
                 <div style={{ width: '100%', padding: '10px 0' }}>
@@ -1189,6 +1748,17 @@ const StoreDashboard: React.FC = () => {
           header="Store Dashboard"
           message={alertMessage}
           buttons={['OK']}
+        />
+
+        {/* Interactive Location Picker */}
+        <LocationPicker 
+          isOpen={isMapModalOpen}
+          onDidDismiss={() => setIsMapModalOpen(false)}
+          onLocationSelected={handleLocationSelected}
+          initialPosition={storeInfo.latitude && storeInfo.longitude ? {
+            lat: storeInfo.latitude,
+            lng: storeInfo.longitude
+          } : undefined}
         />
 
         {/* Logout Button */}

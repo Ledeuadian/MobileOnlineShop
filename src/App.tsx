@@ -35,6 +35,7 @@ import Register from './pages/Register';
 import ResetPassword from './pages/ResetPassword';
 import AccountConfirmation from './components/AccountConfirmation';
 import OAuthCallback from './components/OAuthCallback';
+import LocationRequirement from './components/LocationRequirement';
 import PendingApproval from './pages/PendingApproval';
 
 // Lazy load heavy dashboard components
@@ -48,6 +49,7 @@ const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
+import { LocationRequirementService } from './services/locationRequirementService';
 
 setupIonicReact();
 
@@ -779,6 +781,29 @@ const ProtectedGroceryStoreResultsRoute: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const [isLocationReady, setIsLocationReady] = useState(false);
+  const [isLocationChecking, setIsLocationChecking] = useState(true);
+
+  // Check location requirements on app start
+  useEffect(() => {
+    const checkLocationRequirement = async () => {
+      try {
+        console.log('📍 Checking location requirements on app start...');
+        const isReady = await LocationRequirementService.isLocationReady();
+        console.log('📍 Location ready status:', isReady);
+        
+        setIsLocationReady(isReady);
+      } catch (error) {
+        console.error('❌ Error checking location requirements:', error);
+        setIsLocationReady(false);
+      } finally {
+        setIsLocationChecking(false);
+      }
+    };
+
+    checkLocationRequirement();
+  }, []);
+
   // Global session monitoring
   useEffect(() => {
     console.log('🔐 Initializing global session monitoring...');
@@ -910,6 +935,50 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const handleLocationReady = () => {
+    console.log('✅ Location requirements satisfied, proceeding to app');
+    setIsLocationReady(true);
+  };
+
+  // Show loading screen while checking location
+  if (isLocationChecking) {
+    return (
+      <IonApp>
+        <IonPage>
+          <IonContent>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              height: '100%',
+              gap: '20px'
+            }}>
+              <IonSpinner name="crescent" color="primary" style={{ transform: 'scale(1.5)' }} />
+              <p style={{ color: 'var(--ion-color-medium)', textAlign: 'center' }}>
+                Initializing location services...
+              </p>
+            </div>
+          </IonContent>
+        </IonPage>
+      </IonApp>
+    );
+  }
+
+  // Show location requirement screen if location is not ready
+  if (!isLocationReady) {
+    return (
+      <IonApp>
+        <LocationRequirement 
+          onLocationReady={handleLocationReady} 
+          showSkipOption={false}
+          forceCheck={true}
+        />
+      </IonApp>
+    );
+  }
+
+  // Main app content (only shown after location is ready)
   return (
     <IonApp>
       <IonReactRouter>

@@ -275,31 +275,46 @@ const Login: React.FC = () => {
                 type="button"
                 className="social-btn"
                 onClick={async () => {
-                  // Detect if we're running on mobile/Capacitor
-                  const isMobile = window.location.protocol === 'capacitor:' || 
-                                   window.location.hostname === 'localhost' ||
-                                   'Capacitor' in window;
+                  setError(null); // Clear any previous errors
                   
-                  let redirectTo: string;
-                  
-                  if (isMobile) {
-                    // For mobile, use the app's custom scheme
-                    redirectTo = 'com.groceryshop.app://oauth-callback';
-                  } else {
-                    // For web, redirect to home
-                    redirectTo = window.location.origin + '/';
-                  }
-
-                  console.log('Facebook OAuth redirect URL:', redirectTo);
-
-                  const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'facebook',
-                    options: {
-                      redirectTo: redirectTo
+                  try {
+                    console.log('Initiating Facebook OAuth...');
+                    
+                    // Detect if we're running on mobile/Capacitor
+                    const isMobile = window.location.protocol === 'capacitor:' || 
+                                     window.location.hostname === 'localhost' ||
+                                     'Capacitor' in window;
+                    
+                    let redirectTo: string;
+                    
+                    if (isMobile) {
+                      // For mobile, use the app's custom scheme
+                      redirectTo = 'com.groceryshop.app://oauth-callback';
+                    } else {
+                      // For web, redirect to oauth callback page
+                      redirectTo = window.location.origin + '/oauth-callback';
                     }
-                  });
-                  if (error) {
-                    setError(error.message);
+
+                    console.log('Facebook OAuth redirect URL:', redirectTo);
+                    console.log('Mobile environment:', isMobile);
+
+                    const { data, error } = await supabase.auth.signInWithOAuth({
+                      provider: 'facebook',
+                      options: {
+                        redirectTo: redirectTo,
+                        scopes: 'email'
+                      }
+                    });
+                    
+                    if (error) {
+                      console.error('Facebook OAuth initiation error:', error);
+                      setError(`Facebook login failed: ${error.message}`);
+                    } else {
+                      console.log('Facebook OAuth initiated successfully:', data);
+                    }
+                  } catch (err) {
+                    console.error('Facebook OAuth error:', err);
+                    setError('Failed to initiate Facebook login. Please try again.');
                   }
                 }}
               >

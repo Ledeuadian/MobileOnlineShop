@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import { IonContent, IonSpinner, IonText } from '@ionic/react';
-import { createUserFromOAuthSession, checkUserApprovalStatus } from '../services/supabaseService';
+import { createUserFromOAuthSession, checkUserApprovalStatus, supabase } from '../services/supabaseService';
 
 const OAuthCallback: React.FC = () => {
   const history = useHistory();
@@ -18,11 +18,135 @@ const OAuthCallback: React.FC = () => {
       }
 
       try {
-        console.log('Processing OAuth callback...');
+        console.log('🔐 Processing OAuth callback...');
+        console.log('Current URL:', window.location.href);
+        console.log('URL search params:', window.location.search);
+        console.log('URL hash:', window.location.hash);
         setProcessed(true);
+        
+        // Check URL for OAuth parameters (both query and hash)
+        const urlParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        
+        console.log('URL params:', Object.fromEntries(urlParams));
+        console.log('Hash params:', Object.fromEntries(hashParams));
+        
+        // Look for access_token in both locations
+        const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+        const error = urlParams.get('error') || hashParams.get('error');
+        const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
+        
+        console.log('OAuth tokens found:', { accessToken: !!accessToken, refreshToken: !!refreshToken, error, errorDescription });
+        
+        if (error) {
+          console.error('OAuth error in URL:', error, errorDescription);
+          setError(`OAuth error: ${errorDescription || error}`);
+          setLoading(false);
+          return;
+        }
+        
+        // If we have tokens in URL, set them explicitly
+        if (accessToken && refreshToken) {
+          console.log('Setting session with tokens from URL...');
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          
+          if (setSessionError) {
+            console.error('Error setting session with tokens:', setSessionError);
+            setError('Failed to establish session with OAuth tokens');
+            setLoading(false);
+            return;
+          }
+          
+          console.log('Session set successfully with URL tokens');
+        }
+        
+        // Wait for session to be established
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Check for active session first
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('Current session after processing:', sessionData);
+        console.log('Session error:', sessionError);
+        
+        if (!sessionData.session) {
+          console.error('No active session found after OAuth callback');
+          
+          // Try to manually get session from URL hash/params one more time
+          const urlParams = new URLSearchParams(window.location.search);
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          
+          // Check for Facebook OAuth errors
+          const errorParam = urlParams.get('error') || hashParams.get('error');
+          const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
+          const errorReason = urlParams.get('error_reason') || hashParams.get('error_reason');
+          
+          if (errorParam) {
+            console.error('Facebook OAuth error detected:', {
+              error: errorParam,
+              description: errorDescription,
+              reason: errorReason
+            });
+            
+            let userFriendlyError = 'Facebook login failed';
+            
+            if (errorDescription) {
+              if (errorDescription.includes('user denied') || errorParam === 'access_denied') {
+                userFriendlyError = 'Facebook login was cancelled';
+              } else if (errorDescription.includes('invalid_request')) {
+                userFriendlyError = 'Facebook login configuration error';
+              } else {
+                userFriendlyError = `Facebook error: ${errorDescription}`;
+              }
+            }
+            
+            setError(userFriendlyError);
+            setLoading(false);
+            
+            // Redirect back to login after showing error
+            setTimeout(() => {
+              history.replace('/login');
+            }, 3000);
+            return;
+          }
+          
+          setError('No active authentication session found. Please try logging in again.');
+          setLoading(false);
+          
+          // Redirect back to login after a delay
+          setTimeout(() => {
+            history.replace('/login');
+          }, 3000);
+          return;
+        }
         
         // Create user from OAuth session
         const result = await createUserFromOAuthSession();
+        console.log('User creation result:', result);
+        
+        // If user creation failed, try alternative session detection
+        if (!result.success && result.message !== 'User already exists') {
+          console.log('Standard user creation failed, trying alternative session detection...');
+          
+          // Try refreshing session one more time
+          const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+          console.log('Session refresh attempt:', { session: refreshedSession, error: refreshError });
+          
+          if (refreshedSession?.session) {
+            console.log('Session refresh successful, trying user creation again...');
+            const retryResult = await createUserFromOAuthSession();
+            console.log('Retry user creation result:', retryResult);
+            
+            if (retryResult.success || retryResult.message === 'User already exists') {
+              // Use the refreshed session result
+              result.success = true;
+              result.data = { email: refreshedSession.session.user.email };
+            }
+          }
+        }
         
         if (result.success || result.message === 'User already exists') {
           const userEmail = result.data?.email;
@@ -30,6 +154,7 @@ const OAuthCallback: React.FC = () => {
           if (userEmail) {
             // Store email in localStorage
             localStorage.setItem('userEmail', userEmail);
+            console.log('✅ User email stored:', userEmail);
             
             // Check user type and redirect accordingly
             const approvalResult = await checkUserApprovalStatus(userEmail);
@@ -39,21 +164,27 @@ const OAuthCallback: React.FC = () => {
             // Check if user is pending approval
             if (approvalResult?.data?.approval_status === 'pending') {
               // User is pending approval - redirect to pending page
+              console.log('🔄 Redirecting to pending approval');
               history.replace('/pending-approval');
             } else if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
               // Admin user - redirect to admin dashboard
+              console.log('🔄 Redirecting to admin dashboard');
               history.replace('/admin-dashboard');
             } else if (approvalResult?.data?.userTypeCode === 2 && approvalResult.data.approval_status === 'approved') {
               // DTI user - redirect to DTI dashboard
+              console.log('🔄 Redirecting to DTI dashboard');
               history.replace('/dti-dashboard');
             } else if (approvalResult?.data?.userTypeCode === 3 && approvalResult.data.approval_status === 'approved') {
               // Store user - redirect to store dashboard  
+              console.log('🔄 Redirecting to store dashboard');
               history.replace('/store-dashboard');
             } else {
               // Regular user or others - redirect to home
+              console.log('🔄 Redirecting to home');
               history.replace('/home');
             }
           } else {
+            console.error('Unable to retrieve user email from OAuth session');
             setError('Unable to retrieve user email from OAuth session');
             setLoading(false);
           }
@@ -63,14 +194,16 @@ const OAuthCallback: React.FC = () => {
           setLoading(false);
         }
       } catch (err) {
-        console.error('OAuth callback error:', err);
-        setError('Failed to process OAuth login');
+        console.error('❌ OAuth callback error:', err);
+        setError('Failed to process OAuth login. Please try again.');
         setLoading(false);
       }
     };
     
-    // Add a small delay to ensure OAuth session is properly set
-    setTimeout(handleOAuthCallback, 1000);
+    // Add a delay to ensure OAuth session is properly set
+    const timeoutId = setTimeout(handleOAuthCallback, 1000);
+    
+    return () => clearTimeout(timeoutId);
   }, [history, processed]);
 
   if (loading) {
