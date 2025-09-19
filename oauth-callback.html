@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OAuth Callback</title>
+  <script>
+    // Extract OAuth code or token from URL
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const accessToken = params.get('access_token');
+    // Redirect to your app's custom scheme with code or token
+    if (code) {
+      window.location.href = `com.groceryshop.app://oauth-callback?code=${code}`;
+    } else if (accessToken) {
+      window.location.href = `com.groceryshop.app://oauth-callback?access_token=${accessToken}`;
+    } else {
+      document.body.innerHTML = '<h2>No OAuth code or token found.</h2>';
+    }
+  </script>
+</head>
+<body>
+  Redirecting to app...
+</body>
+</html>
