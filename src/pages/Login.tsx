@@ -265,7 +265,7 @@ const Login: React.FC = () => {
                       provider: 'facebook',
                       options: {
                         redirectTo: redirectTo,
-                        scopes: 'email'
+                        scopes: 'email public_profile'
                       }
                     });
 
@@ -310,7 +310,7 @@ const Login: React.FC = () => {
                     provider: 'twitter',
                     options: { 
                       redirectTo: redirectTo,
-                      scopes: 'users.read tweet.read'
+                      scopes: 'users.read users.email'
                     }
                   });
 

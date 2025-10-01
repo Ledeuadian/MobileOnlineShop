@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Deep Link Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            display: block;
+            width: 100%;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .success { border-color: #28a745; background: #d4edda; }
+        .error { border-color: #dc3545; background: #f8d7da; }
+        .info { border-color: #17a2b8; background: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <h1>Deep Link Test Page</h1>
+    <p>This page helps test the deep linking mechanism for OAuth callbacks.</p>
+    
+    <h2>Environment Information</h2>
+    <div id="env-info" class="result info"></div>
+    
+    <h2>Deep Link Tests</h2>
+    
+    <button class="test-button" onclick="testBasicDeepLink()">
+        Test Basic Deep Link (com.groceryshop.app://oauth-callback)
+    </button>
+    
+    <button class="test-button" onclick="testDeepLinkWithCode()">
+        Test Deep Link with Code (com.groceryshop.app://oauth-callback?code=test123)
+    </button>
+    
+    <button class="test-button" onclick="testDeepLinkWithToken()">
+        Test Deep Link with Token (com.groceryshop.app://oauth-callback?access_token=test123)
+    </button>
+    
+    <button class="test-button" onclick="testCurrentOAuthCallback()">
+        Test Current OAuth Callback Logic
+    </button>
+    
+    <div id="test-results"></div>
+    
+    <h2>Manual Copy Test</h2>
+    <p>Copy these URLs and paste them in a mobile browser to test deep linking:</p>
+    
+    <div class="result">
+        <strong>Basic:</strong><br>
+        <span id="basic-url">com.groceryshop.app://oauth-callback</span>
+        <button onclick="copyToClipboard('basic-url')" style="margin-left: 10px;">Copy</button>
+    </div>
+    
+    <div class="result">
+        <strong>With Code:</strong><br>
+        <span id="code-url">com.groceryshop.app://oauth-callback?code=test_code_123</span>
+        <button onclick="copyToClipboard('code-url')" style="margin-left: 10px;">Copy</button>
+    </div>
+
+    <script>
+        // Display environment information
+        function displayEnvInfo() {
+            const info = {
+                protocol: window.location.protocol,
+                hostname: window.location.hostname,
+                port: window.location.port,
+                userAgent: window.navigator.userAgent,
+                isMobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent),
+                hasCapacitor: 'Capacitor' in window,
+                platform: navigator.platform,
+                standalone: window.navigator.standalone,
+                fullURL: window.location.href
+            };
+            
+            document.getElementById('env-info').innerHTML = `
+                <strong>Environment Details:</strong><br>
+                Protocol: ${info.protocol}<br>
+                Hostname: ${info.hostname}<br>
+                Port: ${info.port}<br>
+                Platform: ${info.platform}<br>
+                Is Mobile: ${info.isMobile}<br>
+                Has Capacitor: ${info.hasCapacitor}<br>
+                Standalone: ${info.standalone}<br>
+                User Agent: ${info.userAgent}<br>
+                Full URL: ${info.fullURL}
+            `;
+        }
+        
+        function logResult(message, type = 'info') {
+            const results = document.getElementById('test-results');
+            const timestamp = new Date().toLocaleTimeString();
+            results.innerHTML += `
+                <div class="result ${type}">
+                    <strong>[${timestamp}]</strong> ${message}
+                </div>
+            `;
+        }
+        
+        function testBasicDeepLink() {
+            const url = 'com.groceryshop.app://oauth-callback';
+            logResult(`Attempting basic deep link: ${url}`, 'info');
+            
+            try {
+                window.location.href = url;
+                logResult('Deep link attempted successfully', 'success');
+                
+                // Check if we're still on the same page after a short delay
+                setTimeout(() => {
+                    logResult('Still on test page - deep link may not have worked', 'error');
+                }, 2000);
+                
+            } catch (error) {
+                logResult(`Deep link failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function testDeepLinkWithCode() {
+            const url = 'com.groceryshop.app://oauth-callback?code=test_code_123';
+            logResult(`Attempting deep link with code: ${url}`, 'info');
+            
+            try {
+                window.location.href = url;
+                logResult('Deep link with code attempted successfully', 'success');
+                
+                setTimeout(() => {
+                    logResult('Still on test page - deep link with code may not have worked', 'error');
+                }, 2000);
+                
+            } catch (error) {
+                logResult(`Deep link with code failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function testDeepLinkWithToken() {
+            const url = 'com.groceryshop.app://oauth-callback?access_token=test_token_123';
+            logResult(`Attempting deep link with token: ${url}`, 'info');
+            
+            try {
+                window.location.href = url;
+                logResult('Deep link with token attempted successfully', 'success');
+                
+                setTimeout(() => {
+                    logResult('Still on test page - deep link with token may not have worked', 'error');
+                }, 2000);
+                
+            } catch (error) {
+                logResult(`Deep link with token failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function testCurrentOAuthCallback() {
+            logResult('Testing current OAuth callback logic...', 'info');
+            
+            // Simulate the current oauth-callback.html logic
+            const isMobileApp = window.location.protocol === 'capacitor:' || 
+                                'Capacitor' in window ||
+                                window.navigator.userAgent.includes('CapacitorWebView') ||
+                                window.navigator.userAgent.includes('wv') ||
+                                window.navigator.userAgent.includes('Mobile') ||
+                                /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent);
+
+            const isLocalDevelopment = window.location.hostname === 'localhost' ||
+                                       window.location.hostname === '127.0.0.1' ||
+                                       window.location.port === '8100' ||
+                                       window.location.port === '8101';
+
+            const isGitHubPages = window.location.hostname === 'ledeuadian.github.io';
+            const shouldDeepLink = isMobileApp || isGitHubPages;
+            
+            logResult(`Mobile App Detected: ${isMobileApp}`, 'info');
+            logResult(`Local Development: ${isLocalDevelopment}`, 'info');
+            logResult(`GitHub Pages: ${isGitHubPages}`, 'info');
+            logResult(`Should Deep Link: ${shouldDeepLink}`, 'info');
+            
+            if (shouldDeepLink && !isLocalDevelopment) {
+                const testCode = 'oauth_test_code_123';
+                const deepLinkUrl = `com.groceryshop.app://oauth-callback?code=${testCode}`;
+                logResult(`Would attempt deep link: ${deepLinkUrl}`, 'success');
+                
+                // Actually try it
+                try {
+                    window.location.href = deepLinkUrl;
+                    setTimeout(() => {
+                        logResult('Deep link attempt completed, still on page', 'error');
+                    }, 3000);
+                } catch (error) {
+                    logResult(`Deep link error: ${error.message}`, 'error');
+                }
+            } else {
+                logResult('Deep link conditions not met', 'info');
+            }
+        }
+        
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('Copied to clipboard!');
+                }).catch(() => {
+                    prompt('Copy this URL:', text);
+                });
+            } else {
+                prompt('Copy this URL:', text);
+            }
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            displayEnvInfo();
+            logResult('Deep Link Test Page loaded successfully', 'success');
+        };
+    </script>
+</body>
+</html>

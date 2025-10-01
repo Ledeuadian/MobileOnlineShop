@@ -7,12 +7,131 @@
     const params = new URLSearchParams(window.location.search);
     let code = params.get('code');
     let accessToken = params.get('access_token');
+    let error = params.get('error');
+    let errorCode = params.get('error_code');
+    let errorDescription = params.get('error_description');
 
-    // Also check fragment (hash) for code/access_token
+    // Also check fragment (hash) for code/access_token/errors
     if (window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       if (!code) code = hashParams.get('code');
       if (!accessToken) accessToken = hashParams.get('access_token');
+      if (!error) error = hashParams.get('error');
+      if (!errorCode) errorCode = hashParams.get('error_code');
+      if (!errorDescription) errorDescription = hashParams.get('error_description');
+    }
+
+    console.log('OAuth callback parameters:', {
+      code: code ? 'present' : 'missing',
+      accessToken: accessToken ? 'present' : 'missing',
+      error: error,
+      errorCode: errorCode,
+      errorDescription: errorDescription,
+      fullURL: window.location.href
+    });
+
+    // Check for OAuth errors first
+    if (error) {
+      console.log('OAuth Error detected:', error, errorCode, errorDescription);
+      
+      let errorTitle = 'OAuth Login Failed';
+      let errorMessage = 'An error occurred during login.';
+      let userFriendlyMessage = '';
+      let actionButtons = '';
+
+      // Handle specific error types
+      switch (error) {
+        case 'access_denied':
+          errorTitle = 'Login Cancelled';
+          errorMessage = 'You cancelled the login process.';
+          userFriendlyMessage = 'Please try logging in again if you want to continue.';
+          actionButtons = `
+            <button onclick="window.history.back()" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+              Try Again
+            </button>`;
+          break;
+          
+        case 'server_error':
+          if (errorDescription && errorDescription.includes('email')) {
+            errorTitle = 'Email Access Required';
+            errorMessage = 'Unable to access your email address from the social provider.';
+            userFriendlyMessage = `
+              This usually happens when:
+              <br>• You didn't grant email permission during login
+              <br>• Your social account doesn't have a verified email address
+              <br>• The provider's privacy settings block email access
+            `;
+            actionButtons = `
+              <button onclick="tryEmailFix()" style="background: #28a745; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+                Try Login Again
+              </button>
+              <button onclick="window.history.back()" style="background: #6c757d; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+                Go Back
+              </button>`;
+          } else {
+            errorTitle = 'Server Error';
+            errorMessage = 'A server error occurred during login.';
+            userFriendlyMessage = 'Please try again in a few moments. If the problem persists, contact support.';
+            actionButtons = `
+              <button onclick="window.history.back()" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+                Try Again
+              </button>`;
+          }
+          break;
+          
+        case 'temporarily_unavailable':
+          errorTitle = 'Service Temporarily Unavailable';
+          errorMessage = 'The login service is temporarily unavailable.';
+          userFriendlyMessage = 'Please try again in a few minutes.';
+          actionButtons = `
+            <button onclick="window.history.back()" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+              Try Again
+            </button>`;
+          break;
+          
+        default:
+          errorTitle = 'Login Error';
+          errorMessage = error.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          userFriendlyMessage = errorDescription ? decodeURIComponent(errorDescription) : 'An unexpected error occurred.';
+          actionButtons = `
+            <button onclick="window.history.back()" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+              Try Again
+            </button>`;
+      }
+
+      // Show error UI
+      document.body.innerHTML = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #721c24; margin: 0 0 15px 0;">🚫 ${errorTitle}</h2>
+            <p style="color: #721c24; font-size: 18px; margin: 0 0 15px 0;">${errorMessage}</p>
+            <div style="color: #721c24; font-size: 14px; line-height: 1.5;">
+              ${userFriendlyMessage}
+            </div>
+          </div>
+          
+          <div style="margin: 30px 0;">
+            ${actionButtons}
+          </div>
+          
+          <details style="margin-top: 30px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px;">
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Technical Details</summary>
+            <div style="font-family: monospace; font-size: 12px; color: #495057;">
+              <strong>Error:</strong> ${error}<br>
+              <strong>Error Code:</strong> ${errorCode || 'N/A'}<br>
+              <strong>Description:</strong> ${errorDescription || 'N/A'}<br>
+              <strong>URL:</strong> ${window.location.href}
+            </div>
+          </details>
+        </div>`;
+
+      // Add JavaScript functions for error handling
+      window.tryEmailFix = function() {
+        alert('Tips for email access:\n\n1. Make sure you grant email permission when prompted\n2. Check that your social account has a verified email address\n3. Try using a different social provider\n4. Contact support if the problem persists');
+        window.history.back();
+      };
+
+      return; // Stop processing if there's an error
     }
 
     // Detect if we're running in a mobile app (Capacitor) vs web browser
