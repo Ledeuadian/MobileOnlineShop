@@ -6,6 +6,24 @@ import ErrorBoundary from './components/ErrorBoundary';
 // Add startup logging for debugging
 console.log('Starting app initialization...');
 
+// Capacitor browser guard: prevent triggerEvent error if not running on device
+declare global {
+  interface Window {
+    Capacitor?: {
+      triggerEvent?: (...args: any[]) => void;
+      [key: string]: any;
+    };
+  }
+}
+if (typeof window !== 'undefined') {
+  if (!window.Capacitor) {
+    window.Capacitor = {};
+  }
+  if (typeof window.Capacitor.triggerEvent !== 'function') {
+    window.Capacitor.triggerEvent = () => {};
+  }
+}
+
 // Catch any uncaught errors
 window.addEventListener('error', (event) => {
   console.error('Uncaught error:', event.error);

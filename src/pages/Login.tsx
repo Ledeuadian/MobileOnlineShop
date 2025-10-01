@@ -242,87 +242,38 @@ const Login: React.FC = () => {
                 type="button"
                 className="social-btn"
                 onClick={async () => {
-                  setError(null); // Clear any previous errors
-                  
+                  setError(null);
                   try {
                     console.log('Initiating Facebook OAuth...');
                     
-                    // Detect if we're running on mobile/Capacitor using the shared helper
+                    // Detect if we're running on mobile/Capacitor
                     const isMobile = window.location.protocol === 'capacitor:' || 
-                                     window.location.hostname === 'localhost' ||
                                      ('Capacitor' in window);
 
-                    // For web we prefer the centralized getRedirectUrl helper which handles origin paths
                     let redirectTo: string;
                     if (isMobile) {
-                      // Mobile: use the app's custom scheme that matches AndroidManifest.xml
-                      redirectTo = 'com.groceryshop.app://oauth-callback';
+                      // For mobile: use GitHub Pages URL that will redirect to custom scheme
+                      redirectTo = 'https://ledeuadian.github.io/MobileOnlineShop/oauth-callback.html';
                     } else {
-                      // Web: use the helper which may include deployment base path
-                      redirectTo = getRedirectUrl('oauth-callback');
+                      // For web development: use localhost
+                      redirectTo = window.location.origin + '/oauth-callback';
                     }
 
                     console.log('Facebook OAuth redirect URL chosen:', redirectTo);
-                    console.log('Mobile environment detected:', isMobile);
 
-                    // Prevent the Supabase SDK from performing a direct browser redirect (which may open the
-                    // system browser). We temporarily stub out navigation methods while the SDK runs, then
-                    // restore them and open the provider URL explicitly in the in-app Browser on mobile.
-                    const originalWindowOpen: typeof window.open = window.open;
-                    const originalLocationAssign: ((url?: string | URL) => void) | undefined = (window.location as unknown as { assign?: (url?: string | URL) => void }).assign;
-                    try {
-                      (window as unknown as { open?: typeof window.open }).open = () => null;
-                      try { (window.location as unknown as { assign?: (url?: string | URL) => void }).assign = () => {}; } catch { /* ignore */ }
-
-                      const { data, error } = await supabase.auth.signInWithOAuth({
-                        provider: 'facebook',
-                        options: {
-                          redirectTo: redirectTo,
-                          scopes: 'email',
-                          // prevent the Supabase SDK from doing a direct browser redirect
-                          // so we can open the provider URL only in the in-app Browser on mobile
-                          skipBrowserRedirect: false,
-                        }
-                      });
-
-                      if (error) {
-                        console.error('Facebook OAuth initiation error:', error);
-                        setError(`Facebook login failed: ${error.message}`);
-                      } else {
-                        console.log('Facebook OAuth initiated successfully:', data);
-
-                        // If the Supabase SDK returned a URL, open it appropriately.
-                        try {
-                          const signInData = data as unknown as { url?: string };
-                          const providerUrl = signInData?.url;
-                          console.log('Computed redirectTo:', redirectTo, ' providerUrl:', providerUrl, ' raw signInData:', signInData);
-                          // Defensive validation: sometimes providerUrl can be a relative path like 'callback'
-                          // which causes the in-app Browser to try to resolve it as a hostname (DNS error).
-                          const looksLikeAbsolute = typeof providerUrl === 'string' && (providerUrl.includes('://') || providerUrl.startsWith('http') || providerUrl.startsWith('com.') || providerUrl.startsWith('android-app:'));
-                          if (!providerUrl) {
-                            console.warn('No provider URL returned by supabase.auth.signInWithOAuth(); SDK may have handled redirect automatically.');
-                          } else if (!looksLikeAbsolute) {
-                            console.error('Provider URL looks malformed or relative. Aborting open to avoid DNS errors. providerUrl=', providerUrl);
-                            setError('OAuth redirect URL returned by server looks invalid. Please check your OAuth configuration (Facebook redirect URIs).');
-                          } else {
-                            if (isMobile) {
-                              const imported = await import('@capacitor/browser');
-                              await imported.Browser.open({ url: providerUrl });
-                              console.log('Opened OAuth provider URL in Capacitor Browser');
-                            } else {
-                              // Web: navigate in current window
-                              window.location.href = providerUrl;
-                            }
-                          }
-                        } catch (openErr) {
-                          console.error('Error opening provider URL in in-app browser:', openErr);
-                          setError('Failed to open OAuth provider. Please try again.');
-                        }
+                    const { data, error } = await supabase.auth.signInWithOAuth({
+                      provider: 'facebook',
+                      options: {
+                        redirectTo: redirectTo,
+                        scopes: 'email'
                       }
-                    } finally {
-                      // Restore originals
-                      (window as unknown as { open?: typeof window.open }).open = originalWindowOpen;
-                      try { if (originalLocationAssign) (window.location as unknown as { assign?: (url?: string | URL) => void }).assign = originalLocationAssign; } catch (restoreErr) { console.warn('Failed to restore location.assign:', restoreErr); }
+                    });
+
+                    if (error) {
+                      console.error('Facebook OAuth initiation error:', error);
+                      setError(`Facebook login failed: ${error.message}`);
+                    } else {
+                      console.log('Facebook OAuth initiated successfully:', data);
                     }
                   } catch (err) {
                     console.error('Facebook OAuth error:', err);
@@ -338,46 +289,39 @@ const Login: React.FC = () => {
               onClick={async () => {
                 setError(null);
                 try {
-                  const isMobile = window.location.protocol === 'capacitor:' ||
-                                   window.location.hostname === 'localhost' ||
+                  console.log('Initiating Twitter OAuth...');
+                  
+                  // Detect if we're running on mobile/Capacitor
+                  const isMobile = window.location.protocol === 'capacitor:' || 
                                    ('Capacitor' in window);
-                  const redirectTo = isMobile ? 'com.groceryshop.app://oauth-callback' : getRedirectUrl('oauth-callback');
 
-                  // Temporarily stub navigation to prevent SDK auto-redirects
-                  const originalWindowOpen: typeof window.open = window.open;
-                  const originalLocationAssign: ((url?: string | URL) => void) | undefined = (window.location as unknown as { assign?: (url?: string | URL) => void }).assign;
-                  try {
-                    (window as unknown as { open?: typeof window.open }).open = () => null;
-                    try { (window.location as unknown as { assign?: (url?: string | URL) => void }).assign = () => {}; } catch { /* ignore */ }
+                  let redirectTo: string;
+                  if (isMobile) {
+                    // For mobile: use GitHub Pages URL that will redirect to custom scheme
+                    redirectTo = 'https://ledeuadian.github.io/MobileOnlineShop/oauth-callback.html';
+                  } else {
+                    // For web development: use localhost
+                    redirectTo = window.location.origin + '/oauth-callback';
+                  }
 
-                    const { data, error } = await supabase.auth.signInWithOAuth({
-                      provider: 'twitter',
-                      options: { redirectTo, skipBrowserRedirect: true }
-                    });
+                  console.log('Twitter OAuth redirect URL chosen:', redirectTo);
 
-                    if (error) {
-                      setError(error.message);
-                      return;
+                  const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'twitter',
+                    options: { 
+                      redirectTo: redirectTo,
+                      scopes: 'users.read tweet.read'
                     }
+                  });
 
-                    const signInData = data as unknown as { url?: string };
-                    const providerUrl = signInData?.url;
-                    if (providerUrl) {
-                      if (isMobile) {
-                        const imported = await import('@capacitor/browser');
-                        await imported.Browser.open({ url: providerUrl });
-                      } else {
-                        window.location.href = providerUrl;
-                      }
-                    } else {
-                      console.warn('No provider URL returned by supabase.auth.signInWithOAuth() for twitter');
-                    }
-                  } finally {
-                    (window as unknown as { open?: typeof window.open }).open = originalWindowOpen;
-                    try { if (originalLocationAssign) (window.location as unknown as { assign?: (url?: string | URL) => void }).assign = originalLocationAssign; } catch (restoreErr) { console.warn('Failed to restore location.assign:', restoreErr); }
+                  if (error) {
+                    console.error('Twitter OAuth initiation error:', error);
+                    setError(`Twitter login failed: ${error.message}`);
+                  } else {
+                    console.log('Twitter OAuth initiated successfully:', data);
                   }
                 } catch (err) {
-                  console.error('Twitter OAuth initiation error:', err);
+                  console.error('Twitter OAuth error:', err);
                   setError('Failed to initiate Twitter login. Please try again.');
                 }
               }}

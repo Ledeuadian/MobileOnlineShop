@@ -3,21 +3,161 @@
 <head>
   <title>OAuth Callback</title>
   <script>
-    // Extract OAuth code or token from URL
+    // Extract OAuth code or token from both search params and fragment
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const accessToken = params.get('access_token');
-    // Redirect to your app's custom scheme with code or token
-    if (code) {
-      window.location.href = `com.groceryshop.app://oauth-callback?code=${code}`;
-    } else if (accessToken) {
-      window.location.href = `com.groceryshop.app://oauth-callback?access_token=${accessToken}`;
-    } else {
-      document.body.innerHTML = '<h2>No OAuth code or token found.</h2>';
+    let code = params.get('code');
+    let accessToken = params.get('access_token');
+
+    // Also check fragment (hash) for code/access_token
+    if (window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      if (!code) code = hashParams.get('code');
+      if (!accessToken) accessToken = hashParams.get('access_token');
     }
+
+    // Detect if we're running in a mobile app (Capacitor) vs web browser
+    const isMobileApp = window.location.protocol === 'capacitor:' || 
+                        'Capacitor' in window ||
+                        window.navigator.userAgent.includes('CapacitorWebView') ||
+                        window.navigator.userAgent.includes('wv') || // Android WebView indicator
+                        window.navigator.userAgent.includes('Mobile') ||
+                        /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent);
+
+    // Detect if we're in local development
+    const isLocalDevelopment = window.location.hostname === 'localhost' ||
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.port === '8100' ||
+                               window.location.port === '8101';
+
+    console.log('Environment detection:', {
+      protocol: window.location.protocol,
+      hostname: window.location.hostname,
+      port: window.location.port,
+      userAgent: window.navigator.userAgent,
+      isMobileApp: isMobileApp,
+      isLocalDevelopment: isLocalDevelopment,
+      hasCapacitor: 'Capacitor' in window
+    });
+
+    // For GitHub Pages URL accessed from mobile, always try deep link first
+    const isGitHubPages = window.location.hostname === 'ledeuadian.github.io';
+    const shouldDeepLink = isMobileApp || isGitHubPages;
+
+    if (shouldDeepLink && !isLocalDevelopment) {
+      // Try mobile deep link (works in mobile app or gets handled by system)
+      console.log('Attempting deep link redirect...');
+      
+      // Add visual feedback
+      document.getElementById('status').textContent = 'Redirecting to mobile app...';
+      
+      if (code) {
+        console.log('Redirecting to deep link with code:', code);
+        const deepLinkUrl = `com.groceryshop.app://oauth-callback?code=${code}`;
+        
+        // Try immediate redirect
+        window.location.href = deepLinkUrl;
+        
+        // Fallback: if redirect doesn't work after 3 seconds, show manual options
+        setTimeout(() => {
+          document.body.innerHTML = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+              <h2>Opening Mobile App...</h2>
+              <p>If the app didn't open automatically, please:</p>
+              <div style="margin: 20px 0;">
+                <button onclick="window.location.href='${deepLinkUrl}'" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+                  Open in App
+                </button>
+              </div>
+              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all;">
+                ${deepLinkUrl}
+              </div>
+              <button onclick="copyToClipboard('${deepLinkUrl}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                Copy Link
+              </button>
+            </div>`;
+        }, 3000);
+        
+      } else if (accessToken) {
+        console.log('Redirecting to deep link with access token');
+        const deepLinkUrl = `com.groceryshop.app://oauth-callback?access_token=${accessToken}`;
+        window.location.href = deepLinkUrl;
+        
+        // Same fallback for access token
+        setTimeout(() => {
+          document.body.innerHTML = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+              <h2>Opening Mobile App...</h2>
+              <p>If the app didn't open automatically, please:</p>
+              <div style="margin: 20px 0;">
+                <button onclick="window.location.href='${deepLinkUrl}'" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
+                  Open in App
+                </button>
+              </div>
+              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all;">
+                ${deepLinkUrl}
+              </div>
+              <button onclick="copyToClipboard('${deepLinkUrl}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                Copy Link
+              </button>
+            </div>`;
+        }, 3000);
+        
+      } else {
+        document.body.innerHTML = '<h2>No OAuth code or token found.</h2>';
+      }
+    } else if (isLocalDevelopment) {
+      // Local development - redirect to React app route
+      console.log('Local development detected, redirecting to React route');
+      const currentUrl = new URL(window.location.href);
+      const newUrl = `${window.location.origin}/oauth-callback${currentUrl.search}${currentUrl.hash}`;
+      window.location.href = newUrl;
+    } else {
+      // Web browser accessing GitHub Pages - show instructions to open in mobile app
+      console.log('Web browser detected on production URL');
+      document.body.innerHTML = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+          <h2>Mobile App Login</h2>
+          <p>This OAuth callback is designed for the mobile app.</p>
+          <p>Please open this link in the GroSho mobile app:</p>
+          <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px;">
+            <code>com.groceryshop.app://oauth-callback${window.location.search}${window.location.hash}</code>
+          </div>
+          <p><strong>Or copy this URL and paste it into your mobile app:</strong></p>
+          <button onclick="copyToClipboard()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+            Copy Mobile App URL
+          </button>
+          <p style="margin-top: 20px; font-size: 12px; color: #666;">
+            If you're trying to test the web version, please use localhost:8100 or localhost:8101
+          </p>
+        </div>`;
+        
+        // Add the copy function
+        window.copyToClipboard = function() {
+          const url = `com.groceryshop.app://oauth-callback${window.location.search}${window.location.hash}`;
+          navigator.clipboard.writeText(url).then(() => {
+            alert('Mobile app URL copied to clipboard!');
+          }).catch(() => {
+            prompt('Copy this URL:', url);
+          });
+        };
+      `;
+    }
+    
+    // Global copy function
+    window.copyToClipboard = function(url) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          alert('Deep link copied to clipboard!');
+        }).catch(() => {
+          prompt('Copy this URL:', url);
+        });
+      } else {
+        prompt('Copy this URL:', url);
+      }
+    };
   </script>
 </head>
 <body>
-  Redirecting to app...
+  <div id="status">Processing OAuth callback...</div>
 </body>
 </html>

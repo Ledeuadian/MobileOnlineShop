@@ -7,7 +7,6 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsIn
 // Detect mobile environment
 const isMobile = () => {
   return window.location.protocol === 'capacitor:' || 
-         window.location.hostname === 'localhost' ||
          'Capacitor' in window;
 };
 
@@ -268,19 +267,60 @@ export async function signInWithTwitter() {
   return { data };
 }
 
-// Create user from OAuth session
+// Create user from OAuth session, restoring session from OAuth callback fragment if present
 export async function createUserFromOAuthSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  
+  // Check if we have an OAuth fragment in the URL (e.g., #access_token=...)
+  let session = null;
+  if (window && window.location) {
+    console.log('[OAuth] Current URL:', window.location.href);
+    console.log('[OAuth] Current hash:', window.location.hash);
+    const fragment = window.location.hash.substring(1); // Remove '#'
+    if (fragment) {
+      console.log('[OAuth] Parsed fragment:', fragment);
+      // Parse fragment into key-value pairs
+      const params = new URLSearchParams(fragment);
+      // Log all fragment params
+      for (const [key, value] of params.entries()) {
+        console.log(`[OAuth] Fragment param: ${key} = ${value}`);
+      }
+      // Supabase PKCE flow returns 'code' param for exchange
+      const code = params.get('code');
+      if (code) {
+        console.log('[OAuth] Found code in fragment:', code);
+        try {
+          // Exchange code for session
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('[OAuth] Error exchanging code for session:', error.message);
+            return { error: error.message };
+          }
+          session = data.session;
+          console.log('[OAuth] Session after code exchange:', session);
+        } catch (err) {
+          console.error('[OAuth] Unexpected error exchanging code for session:', err);
+          return { error: 'Failed to exchange code for session' };
+        }
+      } else {
+        console.warn('[OAuth] No code found in fragment.');
+      }
+    } else {
+      console.warn('[OAuth] No fragment found in URL.');
+    }
+  }
+  // Fallback: try to get session from Supabase
+  if (!session) {
+    console.log('[OAuth] No session from code exchange, trying supabase.auth.getSession()...');
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+    console.log('[OAuth] Session from supabase.auth.getSession():', session);
+  }
   if (!session?.user?.email) {
+    console.error('[OAuth] No active OAuth session found. Session object:', session);
     return { error: 'No active OAuth session found' };
   }
-
   const userEmail = session.user.email;
   const authUserId = session.user.id;
-
   console.log('Checking for existing user with email:', userEmail);
-
   try {
     // First, check if user already exists
     const { data: existingUser, error: checkError } = await supabase
@@ -288,20 +328,16 @@ export async function createUserFromOAuthSession() {
       .select('userId, email, auth_user_id, userTypeCode, approval_status')
       .eq('email', userEmail)
       .limit(1);
-
     if (checkError) {
       console.error('Error checking for existing user:', checkError.message);
       return { error: checkError.message };
     }
-
     // If user exists, return the first one found
     if (existingUser && existingUser.length > 0) {
       console.log('User already exists in USER table:', existingUser[0]);
       return { data: existingUser[0], message: 'User already exists' };
     }
-
     console.log('Creating new OAuth user for email:', userEmail);
-
     // Create new user in public.USER table
     const { data, error } = await supabase
       .from('USER')
@@ -315,10 +351,8 @@ export async function createUserFromOAuthSession() {
       ])
       .select()
       .single();
-
     if (error) {
       console.error('Error creating user from OAuth session:', error.message);
-      
       // If it's a duplicate error, try to fetch the existing user again
       if (error.code === '23505' || error.message.includes('duplicate') || error.message.includes('unique')) {
         console.log('Duplicate user detected, fetching existing user...');
@@ -327,17 +361,14 @@ export async function createUserFromOAuthSession() {
           .select('userId, email, auth_user_id, userTypeCode, approval_status')
           .eq('email', userEmail)
           .limit(1);
-        
         if (existingUserAfterError && existingUserAfterError.length > 0) {
           return { data: existingUserAfterError[0], message: 'User already exists' };
         }
       }
       return { error: error.message };
     }
-
     console.log('User created successfully from OAuth session:', data);
     return { data, success: true };
-    
   } catch (err) {
     console.error('Unexpected error in OAuth user creation:', err);
     return { error: 'Failed to create or retrieve user account' };

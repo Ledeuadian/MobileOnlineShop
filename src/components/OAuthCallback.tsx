@@ -225,8 +225,11 @@ const OAuthCallback: React.FC = () => {
       }
     };
     
-    // Add a delay to ensure OAuth session is properly set
-    const timeoutId = setTimeout(handleOAuthCallback, 1000);
+    // Add a delay to ensure OAuth session is properly set - longer for mobile
+    const isMobile = window.location.protocol === 'capacitor:' || ('Capacitor' in window);
+    const delayTime = isMobile ? 3000 : 1000; // Longer delay for mobile WebView
+    console.log(`Adding ${delayTime}ms delay for ${isMobile ? 'mobile' : 'web'} environment...`);
+    const timeoutId = setTimeout(handleOAuthCallback, delayTime);
     
     return () => clearTimeout(timeoutId);
   }, [history, processed]);

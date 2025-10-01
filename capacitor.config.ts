@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'Grocerlytics',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    cleartext: true
   },
   plugins: {
     Geolocation: {
@@ -13,7 +14,23 @@ const config: CapacitorConfig = {
     },
     App: {
       launchAutoHide: false
+    },
+    Browser: {
+      windowName: '_blank',
+      toolbarColor: '#2d6b6b',
+      showTitle: true,
+      showUrl: false
+    },
+    // Improve WebView handling
+    WebView: {
+      allowMixedContent: true
     }
+  },
+  // Add better OAuth handling
+  android: {
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: true
   }
 };
 
