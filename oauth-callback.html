@@ -54,51 +54,143 @@
         console.log('Redirecting to deep link with code:', code);
         const deepLinkUrl = `com.groceryshop.app://oauth-callback?code=${code}`;
         
-        // Try immediate redirect
-        window.location.href = deepLinkUrl;
+        // Multiple attempts to trigger deep link
+        // Method 1: Direct window.location
+        try {
+          window.location.href = deepLinkUrl;
+        } catch (e) {
+          console.log('Method 1 failed:', e);
+        }
+        
+        // Method 2: Create invisible iframe (works on some mobile browsers)
+        setTimeout(() => {
+          try {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLinkUrl;
+            document.body.appendChild(iframe);
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+          } catch (e) {
+            console.log('Method 2 failed:', e);
+          }
+        }, 100);
+        
+        // Method 3: Create a link and programmatically click it
+        setTimeout(() => {
+          try {
+            const link = document.createElement('a');
+            link.href = deepLinkUrl;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => document.body.removeChild(link), 1000);
+          } catch (e) {
+            console.log('Method 3 failed:', e);
+          }
+        }, 200);
+        
+        // Method 4: Try window.open
+        setTimeout(() => {
+          try {
+            window.open(deepLinkUrl, '_system');
+          } catch (e) {
+            console.log('Method 4 failed:', e);
+          }
+        }, 300);
         
         // Fallback: if redirect doesn't work after 3 seconds, show manual options
         setTimeout(() => {
           document.body.innerHTML = `
             <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
               <h2>Opening Mobile App...</h2>
-              <p>If the app didn't open automatically, please:</p>
+              <p>If the app didn't open automatically, please tap the button below:</p>
               <div style="margin: 20px 0;">
-                <button onclick="window.location.href='${deepLinkUrl}'" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
-                  Open in App
-                </button>
+                <a href="${deepLinkUrl}" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; text-decoration: none; display: inline-block;">
+                  Open in GroSho App
+                </a>
               </div>
-              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all;">
+              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all; font-size: 12px;">
                 ${deepLinkUrl}
               </div>
               <button onclick="copyToClipboard('${deepLinkUrl}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
-                Copy Link
+                Copy Deep Link
               </button>
+              <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                If the app still doesn't open, please:
+                <br>1. Make sure the GroSho app is installed
+                <br>2. Try copying the link and opening it in your browser's address bar
+                <br>3. Contact support if the issue persists
+              </p>
             </div>`;
         }, 3000);
         
       } else if (accessToken) {
         console.log('Redirecting to deep link with access token');
         const deepLinkUrl = `com.groceryshop.app://oauth-callback?access_token=${accessToken}`;
-        window.location.href = deepLinkUrl;
+        
+        // Multiple attempts to trigger deep link
+        try {
+          window.location.href = deepLinkUrl;
+        } catch (e) {
+          console.log('Method 1 failed:', e);
+        }
+        
+        setTimeout(() => {
+          try {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLinkUrl;
+            document.body.appendChild(iframe);
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+          } catch (e) {
+            console.log('Method 2 failed:', e);
+          }
+        }, 100);
+        
+        setTimeout(() => {
+          try {
+            const link = document.createElement('a');
+            link.href = deepLinkUrl;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => document.body.removeChild(link), 1000);
+          } catch (e) {
+            console.log('Method 3 failed:', e);
+          }
+        }, 200);
+        
+        setTimeout(() => {
+          try {
+            window.open(deepLinkUrl, '_system');
+          } catch (e) {
+            console.log('Method 4 failed:', e);
+          }
+        }, 300);
         
         // Same fallback for access token
         setTimeout(() => {
           document.body.innerHTML = `
             <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
               <h2>Opening Mobile App...</h2>
-              <p>If the app didn't open automatically, please:</p>
+              <p>If the app didn't open automatically, please tap the button below:</p>
               <div style="margin: 20px 0;">
-                <button onclick="window.location.href='${deepLinkUrl}'" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px;">
-                  Open in App
-                </button>
+                <a href="${deepLinkUrl}" style="background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; text-decoration: none; display: inline-block;">
+                  Open in GroSho App
+                </a>
               </div>
-              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all;">
+              <div style="background: #f0f0f0; padding: 10px; margin: 20px 0; border-radius: 5px; font-family: monospace; word-break: break-all; font-size: 12px;">
                 ${deepLinkUrl}
               </div>
               <button onclick="copyToClipboard('${deepLinkUrl}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
-                Copy Link
+                Copy Deep Link
               </button>
+              <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                If the app still doesn't open, please:
+                <br>1. Make sure the GroSho app is installed
+                <br>2. Try copying the link and opening it in your browser's address bar
+                <br>3. Contact support if the issue persists
+              </p>
             </div>`;
         }, 3000);
         
