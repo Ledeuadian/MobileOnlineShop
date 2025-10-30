@@ -12,7 +12,6 @@ import {
   IonSearchbar,
   IonList,
   IonItem,
-  IonCheckbox,
   IonBadge,
   IonSpinner
 } from '@ionic/react';
@@ -22,7 +21,8 @@ import {
   personOutline, 
   searchOutline,
   storefrontOutline,
-  locationOutline
+  locationOutline,
+  trashOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import './GroceryList.css';
@@ -36,6 +36,7 @@ interface GroceryItem {
   variant?: string;
   unit?: string;
   checked: boolean;
+  showingDelete?: boolean;
 }
 
 const GroceryList: React.FC = () => {
@@ -44,6 +45,8 @@ const GroceryList: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Function to fetch product types from database
   const fetchProductTypes = async () => {
@@ -149,19 +152,103 @@ const GroceryList: React.FC = () => {
     }
   };
 
-  const filteredItems = groceryItems.filter(item =>
-    item.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.brand?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.variant?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.unit?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredItems = groceryItems.filter(item => {
+    // Always show checked items regardless of search
+    if (item.checked) {
+      return true;
+    }
+    
+    // For unchecked items, apply search filter
+    if (!searchText.trim()) {
+      return true; // Show all items when no search text
+    }
+    
+    return (
+      item.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.brand?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.variant?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.unit?.toLowerCase().includes(searchText.toLowerCase())
+    );
+  }).sort((a, b) => {
+    // Sort checked items to the top
+    if (a.checked && !b.checked) return -1;
+    if (!a.checked && b.checked) return 1;
+    // For items with same checked status, sort alphabetically by name
+    return a.name.localeCompare(b.name);
+  });
 
   const toggleItemCheck = (id: number) => {
     setGroceryItems(prevItems =>
       prevItems.map(item =>
-        item.id === id ? { ...item, checked: !item.checked } : item
+        item.id === id ? { ...item, checked: !item.checked, showingDelete: false } : { ...item, showingDelete: false }
       )
     );
+  };
+
+  const toggleDeleteView = (id: number, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    setGroceryItems(prevItems =>
+      prevItems.map(item =>
+        item.id === id ? { ...item, showingDelete: !item.showingDelete } : { ...item, showingDelete: false }
+      )
+    );
+  };
+
+  const deleteItem = (id: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setGroceryItems(prevItems =>
+      prevItems.map(item =>
+        item.id === id ? { ...item, checked: false, showingDelete: false } : item
+      )
+    );
+  };
+
+  const handleTouchStart = (e: React.TouchEvent, id: number) => {
+    if (!groceryItems.find(item => item.id === id)?.checked) return;
+    
+    setTouchEnd(null);
+    setTouchStart({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY
+    });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent, id: number) => {
+    if (!touchStart) return;
+    
+    setTouchEnd({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY
+    });
+  };
+
+  const handleTouchEnd = (id: number) => {
+    if (!touchStart || !touchEnd || !groceryItems.find(item => item.id === id)?.checked) return;
+
+    const distanceX = touchStart.x - touchEnd.x;
+    const distanceY = touchStart.y - touchEnd.y;
+    const isLeftSwipe = distanceX > 50;
+    const isRightSwipe = distanceX < -50;
+    const isVerticalSwipe = Math.abs(distanceY) > Math.abs(distanceX);
+
+    if (!isVerticalSwipe) {
+      if (isLeftSwipe) {
+        // Swipe left - show delete
+        toggleDeleteView(id);
+      } else if (isRightSwipe) {
+        // Swipe right - hide delete
+        setGroceryItems(prevItems =>
+          prevItems.map(item =>
+            item.id === id ? { ...item, showingDelete: false } : item
+          )
+        );
+      }
+    }
+
+    setTouchStart(null);
+    setTouchEnd(null);
   };
 
   const handleBackClick = () => {
@@ -210,58 +297,123 @@ const GroceryList: React.FC = () => {
         <div className="grocery-list-container">
           <div className="grocery-header">
             <h2>Grocery list</h2>
-            <p className="item-count">{groceryItems.filter(item => item.checked).length} items selected</p>
+            <p className="item-count">
+              {groceryItems.filter(item => item.checked).length === 0 
+                ? 'Tap items to add to your list' 
+                : `${groceryItems.filter(item => item.checked).length} items selected`
+              }
+            </p>
           </div>
 
           {/* Search Bar */}
           <IonSearchbar
             value={searchText}
             onIonInput={(e) => setSearchText(e.detail.value!)}
-            placeholder="Search grocery list"
+            placeholder={
+              groceryItems.filter(item => item.checked).length > 0 
+                ? `Search grocery list (${groceryItems.filter(item => item.checked).length} selected)`
+                : "Search grocery list"
+            }
             showClearButton="focus"
             className="grocery-search"
           />
 
           {/* Grocery Items List */}
           {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-              <IonSpinner name="crescent" />
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '3rem 2rem',
+              color: '#666'
+            }}>
+              <IonSpinner name="crescent" style={{ marginBottom: '1rem' }} />
+              <p>Loading grocery items...</p>
             </div>
           ) : (
-            <IonList className="grocery-items-list">
-              {filteredItems.map((item) => (
-                <IonItem 
-                  key={item.id} 
-                  className={`grocery-item ${item.checked ? 'checked' : ''}`}
-                  lines="none"
-                >
-                  <div className="item-content">
-                    <div className="item-details">
-                      <h3 className="item-name">{item.name}</h3>
-                      <div className="item-info">
-                        {item.brand && <span className="item-brand">{item.brand}</span>}
-                        {item.variant && <span className="item-variant">{item.variant}</span>}
-                        {item.unit && <span className="item-unit">{item.unit}</span>}
-                        {item.quantity && <span className="item-quantity">{item.quantity}</span>}
-                      </div>
-                    </div>
-                    <IonCheckbox
-                      checked={item.checked}
-                      onIonChange={() => toggleItemCheck(item.id)}
-                      slot="end"
-                      className="item-checkbox"
-                    />
-                  </div>
-                </IonItem>
-              ))}
-              {!loading && filteredItems.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-                  {searchText ? 'No items found matching your search' : 'No grocery items available'}
+            <>
+              {/* Search info message */}
+              {searchText.trim() && groceryItems.filter(item => item.checked).length > 0 && (
+                <div style={{ 
+                  padding: '0.75rem 1rem', 
+                  margin: '0 1rem', 
+                  backgroundColor: '#e3f2fd', 
+                  borderRadius: '12px', 
+                  fontSize: '0.85rem', 
+                  color: '#1976d2',
+                  marginBottom: '0.75rem',
+                  border: '1px solid #bbdefb'
+                }}>
+                  📌 Your selected items ({groceryItems.filter(item => item.checked).length}) remain visible during search
                 </div>
               )}
-            </IonList>
+              
+              <IonList className="grocery-items-list">
+                {filteredItems.map((item) => (
+                  <IonItem 
+                    key={item.id} 
+                    className={`grocery-item ${item.checked ? 'selected' : ''}`}
+                    lines="none"
+                  >
+                    <div 
+                      className={`item-wrapper ${item.showingDelete ? 'swipe-left' : ''}`}
+                      onTouchStart={(e) => handleTouchStart(e, item.id)}
+                      onTouchMove={(e) => handleTouchMove(e, item.id)}
+                      onTouchEnd={() => handleTouchEnd(item.id)}
+                    >
+                      <button 
+                        className="item-content"
+                        onClick={() => item.checked ? toggleDeleteView(item.id) : toggleItemCheck(item.id)}
+                      >
+                        <div className="item-details">
+                          <h3 className="item-name">
+                            {item.checked && <span className="selected-indicator">✓ </span>}
+                            {item.name}
+                          </h3>
+                          <div className="item-info">
+                            <span className="item-size">{item.unit}</span>
+                            <span className="item-brand">{item.brand}</span>
+                          </div>
+                        </div>
+                      </button>
+                      <button 
+                        className="delete-background" 
+                        onClick={(e) => deleteItem(item.id, e)}
+                      >
+                        <IonIcon icon={trashOutline} />
+                      </button>
+                    </div>
+                  </IonItem>
+                ))}
+                {!loading && filteredItems.length === 0 && (
+                  <div className="empty-state">
+                    <IonIcon icon={searchOutline} className="empty-state-icon" />
+                    <h3>{searchText ? 'No items found' : 'No grocery items available'}</h3>
+                    <p>
+                      {searchText 
+                        ? 'Try searching with different keywords or check your spelling'
+                        : 'Start by searching for items to add to your grocery list'
+                      }
+                    </p>
+                  </div>
+                )}
+              </IonList>
+            </>
           )}
         </div>
+
+        {/* Scroll Progress Indicator */}
+        {filteredItems.length > 5 && (
+          <div className="grocery-progress">
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${Math.min(100, (groceryItems.filter(item => item.checked).length / Math.min(filteredItems.length, 10)) * 100)}%`
+              }}
+            />
+          </div>
+        )}
 
         {/* Bottom Navigation Bar */}
         <div className="bottom-nav-bar">
