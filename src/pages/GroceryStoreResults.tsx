@@ -14,14 +14,11 @@ import {
   IonCard,
   IonCardHeader,
   IonCardTitle,
-  IonCardContent,
-  IonChip
+  IonCardContent
 } from '@ionic/react';
 import { 
   arrowBackOutline, 
   storefrontOutline,
-  checkmarkCircleOutline,
-  closeCircleOutline,
   locationOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
@@ -37,6 +34,7 @@ interface GroceryItem {
   variant?: string;
   unit?: string;
   checked: boolean;
+  productTypeId?: number; // Add productTypeId for database matching
 }
 
 interface StoreItem {
@@ -68,6 +66,91 @@ const GroceryStoreResults: React.FC = () => {
   const [storeResults, setStoreResults] = useState<StoreResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItems] = useState<GroceryItem[]>(location.state?.selectedItems || []);
+  const [expandedStoreId, setExpandedStoreId] = useState<number | null>(null);
+  const [srpPrices, setSrpPrices] = useState<Record<number, number>>({});
+
+  const toggleStoreExpansion = (storeId: number) => {
+    setExpandedStoreId(expandedStoreId === storeId ? null : storeId);
+  };
+
+  const calculateStoreTotal = (store: StoreResult) => {
+    let total = 0;
+    selectedItems.forEach(selectedItem => {
+      const matchingItems = store.matchedItems.filter(
+        item => item.productTypeId === selectedItem.productTypeId
+      );
+      const storeItem = matchingItems.length > 0 
+        ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+        : null;
+      
+      if (storeItem && storeItem.availability > 0) {
+        total += storeItem.price;
+      }
+    });
+    return total;
+  };
+
+  const calculateSavings = (store: StoreResult) => {
+    // Calculate savings based on SRP prices
+    let savings = 0;
+    selectedItems.forEach(selectedItem => {
+      const productTypeId = selectedItem.productTypeId;
+      if (!productTypeId || !srpPrices[productTypeId]) return;
+
+      const matchingItems = store.matchedItems.filter(
+        item => item.productTypeId === selectedItem.productTypeId
+      );
+      const storeItem = matchingItems.length > 0 
+        ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+        : null;
+      
+      if (storeItem && storeItem.availability > 0) {
+        const srpPrice = srpPrices[productTypeId];
+        const storePrice = storeItem.price;
+        // Calculate savings: SRP Price - Store Price (positive = saving money)
+        const itemSavings = srpPrice - storePrice;
+        if (itemSavings > 0) {
+          savings += itemSavings;
+        }
+      }
+    });
+    return savings;
+  };
+
+  const handleCheckout = (store: StoreResult) => {
+    // Navigate to checkout page with store and item details
+    const checkoutItems = selectedItems
+      .map(selectedItem => {
+        const matchingItems = store.matchedItems.filter(
+          item => item.productTypeId === selectedItem.productTypeId
+        );
+        const storeItem = matchingItems.length > 0 
+          ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+          : null;
+        
+        if (storeItem && storeItem.availability > 0) {
+          return {
+            id: storeItem.storeItemId, // Use storeItemId instead of selectedItem.id
+            name: selectedItem.name,
+            description: storeItem.description,
+            price: storeItem.price,
+            quantity: 1
+          };
+        }
+        return null;
+      })
+      .filter(item => item !== null);
+
+    history.push('/grocery-checkout', {
+      storeName: store.storeName,
+      storeId: store.storeId,
+      items: checkoutItems,
+      availableItems: store.availableItems,
+      totalItems: selectedItems.length,
+      total: calculateStoreTotal(store),
+      savings: calculateSavings(store)
+    });
+  };
 
   const fetchStoreResults = useCallback(async () => {
     try {
@@ -85,20 +168,68 @@ const GroceryStoreResults: React.FC = () => {
         return;
       }
 
-      // Get all items from ITEMS_IN_STORE for the selected product names
-      const selectedNames = selectedItems.map(item => item.name);
+      // Get all items from ITEMS_IN_STORE for the selected product type IDs
+      const selectedProductTypeIds = selectedItems
+        .map(item => item.productTypeId)
+        .filter(id => id !== undefined) as number[];
       
-      const { data: storeItems, error: itemsError } = await supabase
+      console.log('Searching for product type IDs:', selectedProductTypeIds);
+      
+      if (selectedProductTypeIds.length === 0) {
+        console.warn('No valid productTypeIds found in selected items');
+        setStoreResults([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Try to query with productTypeId first
+      let storeItems = null;
+      let itemsError = null;
+      
+      // First attempt: Query by productTypeId
+      const queryResult = await supabase
         .from('ITEMS_IN_STORE')
         .select('*')
-        .in('name', selectedNames);
+        .in('productTypeId', selectedProductTypeIds);
+      
+      storeItems = queryResult.data;
+      itemsError = queryResult.error;
 
       if (itemsError) {
-        console.error('Error fetching store items:', itemsError);
-        return;
+        console.error('Error fetching store items by productTypeId:', itemsError);
+        console.error('Error details:', JSON.stringify(itemsError, null, 2));
+        
+        // If productTypeId doesn't exist, try querying all items and filter by description
+        console.log('Attempting fallback: fetching all items and filtering by name...');
+        const fallbackResult = await supabase
+          .from('ITEMS_IN_STORE')
+          .select('*');
+        
+        if (fallbackResult.error) {
+          console.error('Fallback query also failed:', fallbackResult.error);
+          return;
+        }
+        
+        // Filter by matching description/name
+        const selectedNames = selectedItems.map(item => item.name.toLowerCase());
+        storeItems = fallbackResult.data?.filter(item => {
+          const itemDesc = (item.description || '').toLowerCase();
+          return selectedNames.some(name => itemDesc.includes(name));
+        }) || [];
+        
+        console.log('Fallback query found', storeItems.length, 'items');
       }
 
       console.log(`Found ${storeItems?.length || 0} matching items across stores`);
+      console.log('Sample matched items:', storeItems?.slice(0, 3));
+      
+      if (!storeItems || storeItems.length === 0) {
+        console.warn('No items found in ITEMS_IN_STORE matching productTypeIds:', selectedProductTypeIds);
+        console.warn('This might mean:');
+        console.warn('1. The productTypeId column does not exist in ITEMS_IN_STORE');
+        console.warn('2. No items in the store match these product type IDs');
+        console.warn('3. The column name is different (check your database schema)');
+      }
 
       // Process results by store
       const storeResultsMap: { [storeId: number]: StoreResult } = {};
@@ -126,18 +257,24 @@ const GroceryStoreResults: React.FC = () => {
 
       // Calculate unique matches and availability for each store
       Object.values(storeResultsMap).forEach(store => {
-        const uniqueMatches = new Set<string>();
-        const availableMatches = new Set<string>();
+        const uniqueMatches = new Set<number>();
+        const availableMatches = new Set<number>();
 
         store.matchedItems.forEach(item => {
-          uniqueMatches.add(item.name);
-          if (item.availability === 1) {
-            availableMatches.add(item.name);
+          uniqueMatches.add(item.productTypeId);
+          // Check if item is available (availability > 0 means in stock)
+          if (item.availability && item.availability > 0) {
+            availableMatches.add(item.productTypeId);
           }
         });
 
         store.totalItems = uniqueMatches.size;
         store.availableItems = availableMatches.size;
+        
+        console.log(`Store ${store.storeId}: ${store.availableItems}/${store.totalItems} items available`, {
+          matched: Array.from(uniqueMatches),
+          available: Array.from(availableMatches)
+        });
       });
 
       // Calculate availability scores and sort
@@ -246,6 +383,28 @@ const GroceryStoreResults: React.FC = () => {
       history.replace('/grocery-list');
       return;
     }
+
+    // Load SRP prices for selected items
+    const loadSrpPrices = async () => {
+      const productTypeIds = [...new Set(selectedItems
+        .map(item => item.productTypeId)
+        .filter(id => id !== undefined))] as number[];
+
+      if (productTypeIds.length > 0) {
+        const { data: srpData } = await supabase
+          .from('SRP')
+          .select('productTypeId, Price')
+          .in('productTypeId', productTypeIds);
+
+        const srpMap: Record<number, number> = {};
+        (srpData || []).forEach((srp: { productTypeId: number; Price: number }) => {
+          srpMap[srp.productTypeId] = srp.Price;
+        });
+        setSrpPrices(srpMap);
+      }
+    };
+
+    loadSrpPrices();
     fetchStoreResults();
   }, [selectedItems, history, fetchStoreResults]);
 
@@ -301,113 +460,145 @@ const GroceryStoreResults: React.FC = () => {
                 </div>
               ) : (
                 <div className="store-results-list">
-                  {storeResults.map((store, index) => (
-                    <IonCard key={store.storeId} className="store-result-card">
-                      <IonCardHeader>
-                        <div className="store-header">
-                          <div className="store-info">
-                            <IonIcon icon={storefrontOutline} className="store-icon" />
-                            <div>
-                              <IonCardTitle>{store.storeName}</IonCardTitle>
-                              <div className="store-rank">#{index + 1} Best Match</div>
+                  {storeResults.map((store, index) => {
+                    const isExpanded = expandedStoreId === store.storeId;
+                    const storeTotal = calculateStoreTotal(store);
+                    
+                    return (
+                      <IonCard 
+                        key={store.storeId} 
+                        className={`store-result-card ${isExpanded ? 'expanded' : ''}`}
+                        onClick={() => toggleStoreExpansion(store.storeId)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <IonCardHeader>
+                          <div className="store-header">
+                            <div className="store-info">
+                              <IonIcon icon={storefrontOutline} className="store-icon" />
+                              <div>
+                                <IonCardTitle>{store.storeName}</IonCardTitle>
+                                <div className="store-rank">#{index + 1} Best Match</div>
+                                {store.distance !== undefined && (
+                                  <div className="store-distance">
+                                    <IonIcon icon={locationOutline} style={{ fontSize: '0.8rem', marginRight: '4px' }} />
+                                    {store.distance < 1 
+                                      ? `${Math.round(store.distance * 1000)}m away`
+                                      : `${store.distance.toFixed(1)}km away`
+                                    }
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="availability-score">
+                              <IonBadge 
+                                color={getAvailabilityColor(store.availabilityScore)}
+                                className="score-badge"
+                              >
+                                {Math.round(store.availabilityScore)}%
+                              </IonBadge>
+                              <div className="score-label">
+                                {getAvailabilityText(store.availabilityScore)}
+                              </div>
                               {store.distance !== undefined && (
-                                <div className="store-distance">
-                                  <IonIcon icon={locationOutline} style={{ fontSize: '0.8rem', marginRight: '4px' }} />
-                                  {store.distance < 1 
-                                    ? `${Math.round(store.distance * 1000)}m away`
-                                    : `${store.distance.toFixed(1)}km away`
-                                  }
+                                <div className="distance-score">
+                                  <small style={{ color: '#666', fontSize: '0.7rem' }}>
+                                    Proximity: {Math.round(store.distanceScore)}%
+                                  </small>
                                 </div>
                               )}
                             </div>
                           </div>
-                          <div className="availability-score">
-                            <IonBadge 
-                              color={getAvailabilityColor(store.availabilityScore)}
-                              className="score-badge"
-                            >
-                              {Math.round(store.availabilityScore)}%
-                            </IonBadge>
-                            <div className="score-label">
-                              {getAvailabilityText(store.availabilityScore)}
-                            </div>
-                            {store.distance !== undefined && (
-                              <div className="distance-score">
-                                <small style={{ color: '#666', fontSize: '0.7rem' }}>
-                                  Proximity: {Math.round(store.distanceScore)}%
-                                </small>
+                        </IonCardHeader>
+                        
+                        {isExpanded && (
+                          <>
+                            <IonCardContent>
+                              <div className="store-summary">
+                                <div className="summary-item">
+                                  <span className="summary-label">Available:</span>
+                                  <span className="summary-value">{store.availableItems}/{selectedItems.length} items</span>
+                                </div>
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      </IonCardHeader>
-                      
-                      <IonCardContent>
-                        <div className="store-summary">
-                          <div className="summary-item">
-                            <span className="summary-label">Available:</span>
-                            <span className="summary-value">{store.availableItems}/{selectedItems.length} items</span>
-                          </div>
-                        </div>
 
-                        <div className="matched-items">
-                          <h4>Your Items in This Store:</h4>
-                          <div className="items-list">
-                            {selectedItems.map(selectedItem => {
-                              // Find the best match for this product name
-                              // Prefer available items over out-of-stock items
-                              const matchingItems = store.matchedItems.filter(
-                                item => item.name === selectedItem.name
-                              );
-                              
-                              const storeItem = matchingItems.length > 0 
-                                ? matchingItems.find(item => item.availability === 1) || matchingItems[0]
-                                : null;
-                              
-                              return (
-                                <div key={selectedItem.id} className="item-availability">
-                                  <div className="item-info">
-                                    <span className="item-name">{selectedItem.name}</span>
-                                    <div className="item-details">
-                                      {storeItem?.brand && storeItem.brand !== 'null' && (
-                                        <span className="item-brand">{storeItem.brand}</span>
-                                      )}
-                                      {storeItem?.description && 
-                                       storeItem.description !== storeItem.name && 
-                                       storeItem.description.trim() !== '' && (
-                                        <span className="item-variant">
-                                          {storeItem.description}
-                                        </span>
-                                      )}
-                                      {storeItem?.unit && storeItem.unit !== 'null' && (
-                                        <span className="item-unit">per {storeItem.unit}</span>
-                                      )}
-                                    </div>
-                                    {storeItem && (
-                                      <span className="item-price">₱{storeItem.price.toFixed(2)}</span>
-                                    )}
+                              <div className="matched-items">
+                                <h4>Your Items in This Store:</h4>
+                                <div className="items-list">
+                                  {selectedItems.map(selectedItem => {
+                                    // Find the best match by productTypeId
+                                    const matchingItems = store.matchedItems.filter(
+                                      item => item.productTypeId === selectedItem.productTypeId
+                                    );
+                                    
+                                    // Prefer items with stock over out-of-stock items
+                                    const storeItem = matchingItems.length > 0 
+                                      ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+                                      : null;
+                                    
+                                    return (
+                                      <div key={selectedItem.id} className="item-availability">
+                                        <div className="item-info">
+                                          <span className="item-name">{selectedItem.name}</span>
+                                          <div className="item-details">
+                                            {storeItem?.description && storeItem.description.trim() !== '' && (
+                                              <span className="item-description">{storeItem.description}</span>
+                                            )}
+                                          </div>
+                                          {storeItem && (
+                                            <span className="item-price">₱{storeItem.price.toFixed(2)}</span>
+                                          )}
+                                        </div>
+                                        <div className="availability-status">
+                                          {storeItem && storeItem.availability > 0 ? (
+                                            <span style={{ color: '#2dd36f', fontWeight: '600', fontSize: '0.9rem' }}>
+                                              Available
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: '#eb445a', fontWeight: '600', fontSize: '0.9rem' }}>
+                                              Unavailable
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </IonCardContent>
+
+                            <div className="store-footer">
+                              <div className="footer-content">
+                                <div className="total-info">
+                                  <div className="availability-text">
+                                    Available: <strong>{store.availableItems} of {selectedItems.length} items</strong>
                                   </div>
-                                  <div className="availability-status">
-                                    {storeItem ? (
-                                      <IonChip color={storeItem.availability === 1 ? "success" : "medium"}>
-                                        <IonIcon icon={storeItem.availability === 1 ? checkmarkCircleOutline : closeCircleOutline} />
-                                        <span>{storeItem.availability === 1 ? "Available" : "Out of Stock"}</span>
-                                      </IonChip>
-                                    ) : (
-                                      <IonChip color="danger">
-                                        <IonIcon icon={closeCircleOutline} />
-                                        <span>Not Available</span>
-                                      </IonChip>
-                                    )}
+                                  <div className="savings-text">
+                                    Saved based on SRP: <span style={{ color: '#2dd36f' }}>₱{calculateSavings(store).toFixed(2)}</span>
+                                  </div>
+                                  <div className="total-text">
+                                    Total: <strong>₱{storeTotal.toFixed(2)}</strong>
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </IonCardContent>
-                    </IonCard>
-                  ))}
+                                <IonButton 
+                                  color="primary" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCheckout(store);
+                                  }}
+                                  style={{ 
+                                    borderRadius: '8px',
+                                    fontWeight: '600',
+                                    minWidth: '120px'
+                                  }}
+                                >
+                                  Check Out
+                                </IonButton>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </IonCard>
+                    );
+                  })}
                 </div>
               )}
             </>

@@ -118,6 +118,11 @@ const DTIDashboard: React.FC = () => {
   const [isStoreDetailsModalOpen, setIsStoreDetailsModalOpen] = useState(false);
   const [loadingStoreItems, setLoadingStoreItems] = useState(false);
   
+  // Search and filter state for store items
+  const [itemSearchText, setItemSearchText] = useState('');
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>('');
+  
   // New state for SRP pricing analysis
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [srpPrices, setSrpPrices] = useState<{[key: number]: number}>({});
@@ -239,7 +244,7 @@ const DTIDashboard: React.FC = () => {
       // Temporarily bypass RLS by using service role for DTI monitoring
       const { data: storesData, error: storesError } = await supabase
         .from('GROCERY_STORE')
-        .select('storeId, name, store_description, location, store_phone, store_email');
+        .select('storeId, name, storeDescription, location, store_phone, store_email');
 
       console.log('🔍 Supabase query result:', { storesData, storesError });
 
@@ -745,6 +750,70 @@ const DTIDashboard: React.FC = () => {
     setIsStoreDetailsModalOpen(true);
   };
 
+  // Filter store items based on search text
+  const filteredStoreItems = storeItems.filter(item => {
+    if (!itemSearchText.trim()) return true;
+    
+    const searchLower = itemSearchText.toLowerCase();
+    return (
+      item.name?.toLowerCase().includes(searchLower) ||
+      item.category?.toLowerCase().includes(searchLower) ||
+      item.brand?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Handle double-click on price to edit
+  const handlePriceDoubleClick = (itemId: number, currentPrice: number) => {
+    setEditingPriceId(itemId);
+    setEditingPriceValue(currentPrice.toString());
+  };
+
+  // Save edited price
+  const handleSavePrice = async (itemId: number) => {
+    const newPrice = parseFloat(editingPriceValue);
+    
+    if (isNaN(newPrice) || newPrice < 0) {
+      setToastMessage('Please enter a valid price');
+      setShowToast(true);
+      return;
+    }
+
+    try {
+      // Update price in database
+      const { error } = await supabase
+        .from('ITEMS_IN_STORE')
+        .update({ price: newPrice, updated_at: new Date().toISOString() })
+        .eq('storeItemId', itemId);
+
+      if (error) throw error;
+
+      // Update local state
+      setStoreItems(prevItems => 
+        prevItems.map(item => 
+          item.storeItemId === itemId 
+            ? { ...item, price: newPrice } 
+            : item
+        )
+      );
+
+      setToastMessage('Price updated successfully');
+      setShowToast(true);
+      setEditingPriceId(null);
+      setEditingPriceValue('');
+    } catch (error) {
+      console.error('Error updating price:', error);
+      setToastMessage('Failed to update price');
+      setShowToast(true);
+    }
+  };
+
+  // Cancel price editing
+  const handleCancelPriceEdit = () => {
+    setEditingPriceId(null);
+    setEditingPriceValue('');
+  };
+
+
   const closeStoreDetails = () => {
     setIsStoreDetailsModalOpen(false);
     setSelectedStore(null);
@@ -1180,14 +1249,46 @@ const DTIDashboard: React.FC = () => {
                   </IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
+                  {/* Search Bar */}
+                  <IonSearchbar
+                    value={itemSearchText}
+                    onIonInput={(e) => setItemSearchText(e.detail.value!)}
+                    placeholder="Search by name, category, or brand..."
+                    style={{ marginBottom: '0.5rem' }}
+                  />
+                  
+                  {/* Edit Hint */}
+                  <div style={{ 
+                    padding: '8px 16px',
+                    marginBottom: '1rem',
+                    backgroundColor: '#fff3cd',
+                    borderLeft: '4px solid #ff6b6b',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <IonIcon 
+                      icon={informationCircleOutline} 
+                      style={{ color: '#ff6b6b', fontSize: '20px', flexShrink: 0 }} 
+                    />
+                    <span style={{ 
+                      color: '#856404',
+                      fontSize: '13px',
+                      fontWeight: '500'
+                    }}>
+                      💡 <strong style={{ color: '#ff6b6b' }}>Double-tap</strong> on the item price to edit it
+                    </span>
+                  </div>
+                  
                   {loadingStoreItems ? (
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <IonSpinner />
                       <p>Loading store items...</p>
                     </div>
-                  ) : storeItems.length > 0 ? (
+                  ) : filteredStoreItems.length > 0 ? (
                     <IonList>
-                      {storeItems.map((item) => {
+                      {filteredStoreItems.map((item) => {
                         const priceComparison = getPriceComparison(item.price, item.productTypeId);
                         return (
                           <IonCard key={item.storeItemId} className="item-card">
@@ -1196,8 +1297,47 @@ const DTIDashboard: React.FC = () => {
                                 <div className="item-header">
                                   <h3>{item.name}</h3>
                                   <div className="price-comparison">
-                                    <IonBadge color="primary">₱{item.price.toFixed(2)}</IonBadge>
-                                    {priceComparison.srpPrice && (
+                                    {editingPriceId === item.storeItemId ? (
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <IonInput
+                                          type="number"
+                                          value={editingPriceValue}
+                                          onIonInput={(e) => setEditingPriceValue(e.detail.value!)}
+                                          placeholder="Enter price"
+                                          style={{ 
+                                            maxWidth: '120px',
+                                            border: '1px solid #3880ff',
+                                            borderRadius: '4px',
+                                            padding: '4px 8px'
+                                          }}
+                                          autofocus
+                                        />
+                                        <IonButton 
+                                          size="small" 
+                                          color="success"
+                                          onClick={() => handleSavePrice(item.storeItemId)}
+                                        >
+                                          <IonIcon icon={saveOutline} slot="icon-only" />
+                                        </IonButton>
+                                        <IonButton 
+                                          size="small" 
+                                          color="medium"
+                                          onClick={handleCancelPriceEdit}
+                                        >
+                                          <IonIcon icon={close} slot="icon-only" />
+                                        </IonButton>
+                                      </div>
+                                    ) : (
+                                      <IonBadge 
+                                        color="primary"
+                                        onDoubleClick={() => handlePriceDoubleClick(item.storeItemId, item.price)}
+                                        style={{ cursor: 'pointer' }}
+                                        title="Double-click to edit price"
+                                      >
+                                        ₱{item.price.toFixed(2)}
+                                      </IonBadge>
+                                    )}
+                                    {priceComparison.srpPrice && editingPriceId !== item.storeItemId && (
                                       <div className="srp-price-info">
                                         <IonBadge 
                                           color="secondary" 
@@ -1241,6 +1381,17 @@ const DTIDashboard: React.FC = () => {
                         );
                       })}
                     </IonList>
+                  ) : storeItems.length > 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem' }}>
+                      <p>No items match your search</p>
+                      <IonButton 
+                        size="small" 
+                        fill="clear"
+                        onClick={() => setItemSearchText('')}
+                      >
+                        Clear Search
+                      </IonButton>
+                    </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
                       <p>No items found in this store</p>

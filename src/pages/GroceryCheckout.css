@@ -1,0 +1,283 @@
+.checkout-container {
+  padding: 16px;
+  padding-bottom: 180px; /* Space for footer */
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* Store Summary Card */
+.store-summary-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.store-summary-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cart-icon {
+  font-size: 2rem;
+  color: #3880ff;
+  min-width: 32px;
+}
+
+.store-summary-info {
+  flex: 1;
+}
+
+.store-summary-info h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.availability-info {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.savings-info {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: #2dd36f;
+  font-weight: 500;
+}
+
+.chevron-icon {
+  font-size: 1.2rem;
+  color: #999;
+  transition: transform 0.3s ease;
+}
+
+/* Item Breakdown */
+.item-breakdown {
+  margin: 12px 0;
+  padding: 12px 0;
+  border-top: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.item-breakdown ion-list {
+  padding: 0;
+}
+
+.breakdown-item {
+  --padding-start: 0;
+  --padding-end: 0;
+  --inner-padding-end: 0;
+  margin: 8px 0;
+}
+
+.item-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.item-quantity-price {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.item-subtotal {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+  margin-left: 12px;
+}
+
+.store-summary-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.total-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.total-amount {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #333;
+}
+
+/* Payment Section */
+.payment-section {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.section-chevron {
+  font-size: 1rem;
+  color: #999;
+}
+
+.payment-list {
+  background: transparent;
+  padding: 0;
+}
+
+.payment-item {
+  --background: #f8f9fa;
+  --border-radius: 8px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+.payment-icon {
+  font-size: 1.5rem;
+  margin-right: 8px;
+}
+
+.ewallet-options {
+  margin-left: 16px;
+  margin-top: 8px;
+  padding-left: 16px;
+  border-left: 2px solid #e0e0e0;
+}
+
+.payment-sub-item {
+  --background: #ffffff;
+  --border-radius: 8px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.payment-sub-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: 8px;
+}
+
+.gcash-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #007dfe, #00a8ff);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.paymaya-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #00a651, #00d65f);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* Checkout Footer */
+.checkout-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+  padding: 16px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.footer-summary {
+  margin-bottom: 12px;
+}
+
+.footer-availability {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.footer-savings {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.savings-amount {
+  color: #2dd36f;
+  font-weight: 600;
+}
+
+.footer-total {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.footer-total strong {
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.place-order-button {
+  --border-radius: 8px;
+  --padding-top: 14px;
+  --padding-bottom: 14px;
+  font-weight: 600;
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .checkout-container {
+    padding: 12px;
+    padding-bottom: 180px;
+  }
+
+  .store-summary-card,
+  .payment-section {
+    border-radius: 8px;
+  }
+}

@@ -41,12 +41,19 @@ import PendingApproval from './pages/PendingApproval';
 // Lazy load heavy dashboard components
 const Home = React.lazy(() => import('./pages/Home'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
+const StoreVerification = React.lazy(() => import('./pages/StoreVerification'));
 const StoreDashboard = React.lazy(() => import('./pages/StoreDashboard'));
 const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
 const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
 const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
+const GroceryCheckout = React.lazy(() => import('./pages/GroceryCheckout'));
+const OrderConfirmation = React.lazy(() => import('./pages/OrderConfirmation'));
+const Notifications = React.lazy(() => import('./pages/Notifications'));
+const OrderDetails = React.lazy(() => import('./pages/OrderDetails'));
+const MyPurchases = React.lazy(() => import('./pages/MyPurchases'));
+const CustomerOrderDetails = React.lazy(() => import('./pages/CustomerOrderDetails'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
 const Checkout = React.lazy(() => import('./pages/Checkout'));
 const AddressSelection = React.lazy(() => import('./pages/AddressSelection'));
@@ -1165,6 +1172,24 @@ const App: React.FC = () => {
           <Route exact path="/grocery-store-results">
             <ProtectedGroceryStoreResultsRoute />
           </Route>
+          <Route exact path="/grocery-checkout">
+            <GroceryCheckout />
+          </Route>
+          <Route exact path="/order-confirmation">
+            <OrderConfirmation />
+          </Route>
+          <Route exact path="/notifications">
+            <Notifications />
+          </Route>
+          <Route exact path="/order-details/:orderId">
+            <OrderDetails />
+          </Route>
+          <Route exact path="/my-purchases">
+            <MyPurchases />
+          </Route>
+          <Route exact path="/customer-order-details/:orderId">
+            <CustomerOrderDetails />
+          </Route>
           <Route exact path="/verified">
             <AccountConfirmation />
           </Route>
@@ -1176,6 +1201,19 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/admin-dashboard">
             <ProtectedAdminRoute />
+          </Route>
+          <Route exact path="/store-verification">
+            <React.Suspense fallback={
+              <IonPage>
+                <IonContent>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <IonSpinner name="crescent" />
+                  </div>
+                </IonContent>
+              </IonPage>
+            }>
+              <StoreVerification />
+            </React.Suspense>
           </Route>
           <Route exact path="/store-dashboard">
             <ProtectedStoreRoute />

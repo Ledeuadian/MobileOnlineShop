@@ -33,6 +33,52 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: 12px;
   overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.store-result-card.expanded {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.store-footer {
+  background-color: #f8f9fa;
+  border-top: 1px solid #e0e0e0;
+  padding: 16px;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.total-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.availability-text {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.savings-text {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.total-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin-top: 4px;
+}
+
+.total-text strong {
+  font-weight: 700;
+  font-size: 1.2rem;
 }
 
 .store-header {

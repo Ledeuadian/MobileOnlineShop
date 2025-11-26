@@ -38,19 +38,18 @@
   margin-bottom: 0.75rem;
   --padding-start: 0;
   --padding-end: 0;
-  --inner-padding-start: 1.5rem;
-  --inner-padding-end: 1.5rem;
+  --inner-padding-start: 0;
+  --inner-padding-end: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* Changed from hidden to visible */
+  border-radius: 12px;
 }
 
 .grocery-item.selected {
-  --background: #e3f2fd;
-  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.3);
-  border-left: 4px solid #2196f3;
-  transform: scale(1.02);
+  --background: #f8f9fa;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .grocery-item:hover {
@@ -63,32 +62,32 @@
   display: flex;
   align-items: center;
   background: white;
-  transition: transform 0.3s ease, background-color 0.3s ease;
+  transition: transform 0.3s ease;
   min-height: 80px;
-}
-
-.grocery-item.selected .item-wrapper {
-  background: #e3f2fd;
+  border-radius: 12px;
+  width: 100%;
 }
 
 .item-wrapper.swipe-left {
-  transform: translateX(-80px);
+  transform: translateX(-90px); /* Slide the entire wrapper left */
 }
 
 .delete-background {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 80px;
-  background: #f44336;
+  top: 50%;
+  right: -85px; /* Position it outside to the right */
+  transform: translateY(-50%);
+  width: 60px;
+  height: 60px;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  border-radius: 50%; /* Make it circular like in the image */
   border: none;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
 }
 
 .delete-background:focus {
@@ -96,12 +95,12 @@
   outline-offset: 2px;
 }
 
-.item-wrapper.swipe-left .delete-background {
-  opacity: 1;
+.delete-background:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 .delete-background ion-icon {
-  color: white;
+  color: black;
   font-size: 1.5rem;
 }
 
@@ -110,29 +109,12 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 1.25rem 0;
+  padding: 1.25rem 1.5rem; /* Added horizontal padding */
   flex: 1;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
-  position: relative;
-}
-
-.grocery-item.selected .item-content {
-  padding-left: 8px;
-}
-
-.grocery-item.selected .item-content::before {
-  content: '';
-  position: absolute;
-  left: -20px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 60%;
-  background: #2196f3;
-  border-radius: 0 3px 3px 0;
 }
 
 .item-content:focus {
@@ -152,15 +134,13 @@
 }
 
 .grocery-item.selected .item-name {
-  color: #1976d2;
-  font-weight: 700;
+  color: #2196f3;
 }
 
 .selected-indicator {
   color: #4caf50;
   font-weight: bold;
-  font-size: 1.1em;
-  margin-right: 4px;
+  font-size: 0.9em;
 }
 
 .item-info {
@@ -178,6 +158,12 @@
 .item-brand {
   color: #888;
   font-size: 0.9rem;
+}
+
+.item-variant {
+  color: #888;
+  font-size: 0.9rem;
+  font-style: italic;
 }
 
 /* Remove the old delete button styles */
@@ -204,20 +190,13 @@
 @keyframes selectItem {
   0% {
     transform: scale(1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
   50% {
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+    transform: scale(1.02);
   }
   100% {
-    transform: scale(1.02);
-    box-shadow: 0 4px 16px rgba(33, 150, 243, 0.3);
+    transform: scale(1);
   }
-}
-
-.grocery-item.selected {
-  animation: selectItem 0.3s ease-out;
 }
 
 /* Empty state styling */

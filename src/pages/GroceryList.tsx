@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 import {
   IonPage,
   IonHeader,
@@ -37,10 +37,12 @@ interface GroceryItem {
   unit?: string;
   checked: boolean;
   showingDelete?: boolean;
+  productTypeId?: number; // Add productTypeId to preserve database reference
 }
 
 const GroceryList: React.FC = () => {
   const history = useHistory();
+  const location = useLocation<{ addProductTypeId?: number }>();
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
@@ -48,11 +50,42 @@ const GroceryList: React.FC = () => {
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
 
+  // Load saved selections from localStorage
+  const loadSavedSelections = (): Set<number> => {
+    try {
+      const saved = localStorage.getItem('groceryListSelections');
+      if (saved) {
+        const selections = JSON.parse(saved);
+        return new Set(selections);
+      }
+    } catch (error) {
+      console.error('Error loading saved selections:', error);
+    }
+    return new Set();
+  };
+
+  // Save selections to localStorage
+  const saveSelections = (items: GroceryItem[]) => {
+    try {
+      const selectedProductTypeIds = items
+        .filter(item => item.checked && item.productTypeId)
+        .map(item => item.productTypeId);
+      localStorage.setItem('groceryListSelections', JSON.stringify(selectedProductTypeIds));
+      console.log('Saved selections:', selectedProductTypeIds);
+    } catch (error) {
+      console.error('Error saving selections:', error);
+    }
+  };
+
   // Function to fetch product types from database
-  const fetchProductTypes = async () => {
+  const fetchProductTypes = async (autoCheckProductTypeId?: number) => {
     try {
       setLoading(true);
       console.log('Fetching product types from PRODUCT_TYPE table...');
+      
+      // Load previously saved selections
+      const savedSelections = loadSavedSelections();
+      console.log('Loaded saved selections:', Array.from(savedSelections));
       
       const { data, error } = await supabase
         .from('PRODUCT_TYPE')
@@ -68,9 +101,22 @@ const GroceryList: React.FC = () => {
 
       console.log(`Fetched ${data?.length || 0} product types from database`);
       console.log('Sample data:', data?.slice(0, 3));
+      console.log('All fetched items:', data?.map(d => d.Name));
+
+      // STRICT FILTER: Only include items that have ALL required fields from database
+      const validProducts = data?.filter(product => 
+        product.productTypeId && 
+        product.Name && 
+        product.Name.trim() !== ''
+      ) || [];
+
+      console.log(`Valid products after filtering: ${validProducts.length}`);
+      if (validProducts.length < (data?.length || 0)) {
+        console.warn(`Filtered out ${(data?.length || 0) - validProducts.length} invalid products`);
+      }
 
       // Remove duplicates based on Name, Brand, Variant, Unit combination
-      const uniqueProducts = data.filter((product, index, self) => 
+      const uniqueProducts = validProducts.filter((product, index, self) => 
         index === self.findIndex(p => 
           p.Name === product.Name && 
           p.Brand === product.Brand && 
@@ -80,17 +126,45 @@ const GroceryList: React.FC = () => {
       );
 
       console.log(`After deduplication: ${uniqueProducts.length} unique products`);
+      console.log('Unique product names:', uniqueProducts.map(p => p.Name));
 
-      const formattedItems: GroceryItem[] = uniqueProducts.map(item => ({
-        id: item.productTypeId,
-        name: item.Name,
-        brand: item.Brand || undefined,
-        variant: item.Variant || undefined,
-        unit: item.Unit || undefined,
-        checked: false
-      }));
+      // Generate unique IDs for each item to avoid conflicts, but preserve productTypeId
+      const formattedItems: GroceryItem[] = uniqueProducts.map((item, index) => {
+        const isAutoChecked = autoCheckProductTypeId && item.productTypeId === autoCheckProductTypeId;
+        const wasPreviouslyChecked = savedSelections.has(item.productTypeId);
+        
+        return {
+          id: index + 1, // Use array index + 1 as unique ID for React keys
+          productTypeId: item.productTypeId, // Preserve the actual database ID
+          name: item.Name,
+          brand: item.Brand || undefined,
+          variant: item.Variant || undefined,
+          unit: item.Unit || undefined,
+          checked: isAutoChecked || wasPreviouslyChecked
+        };
+      });
+
+      console.log('Final formatted items:', formattedItems.map(i => ({ 
+        id: i.id, 
+        productTypeId: i.productTypeId, 
+        name: i.name,
+        checked: i.checked
+      })));
+
+      if (autoCheckProductTypeId) {
+        console.log('Auto-checking item with productTypeId:', autoCheckProductTypeId);
+        const checkedItem = formattedItems.find(i => i.productTypeId === autoCheckProductTypeId);
+        if (checkedItem) {
+          console.log('Found and checked item:', checkedItem.name);
+        } else {
+          console.warn('Could not find item with productTypeId:', autoCheckProductTypeId);
+        }
+      }
 
       setGroceryItems(formattedItems);
+      
+      // Save selections to localStorage
+      saveSelections(formattedItems);
     } catch (error) {
       console.error('Error loading product types:', error);
       setGroceryItems([]);
@@ -106,12 +180,28 @@ const GroceryList: React.FC = () => {
     };
 
     const loadData = async () => {
-      await Promise.all([
-        fetchProductTypes(),
-        loadCartCount()
-      ]);
+      // Check if navigated from Home with a product to add
+      const addProductTypeId = location.state?.addProductTypeId;
+      
+      console.log('=== GroceryList useEffect ===');
+      console.log('Location state:', location.state);
+      console.log('addProductTypeId:', addProductTypeId);
+      
+      if (addProductTypeId) {
+        console.log('Loading grocery list with auto-check for productTypeId:', addProductTypeId);
+        await fetchProductTypes(addProductTypeId);
+        // Clear the state to prevent re-checking on re-renders
+        history.replace('/grocery-list', {});
+      } else {
+        console.log('Loading grocery list without auto-check');
+        await fetchProductTypes();
+      }
+      
+      await loadCartCount();
     };
+    
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getCartItemCount = async () => {
@@ -178,11 +268,18 @@ const GroceryList: React.FC = () => {
   });
 
   const toggleItemCheck = (id: number) => {
-    setGroceryItems(prevItems =>
-      prevItems.map(item =>
+    console.log('Toggling item with id:', id);
+    setGroceryItems(prevItems => {
+      const newItems = prevItems.map(item =>
         item.id === id ? { ...item, checked: !item.checked, showingDelete: false } : { ...item, showingDelete: false }
-      )
-    );
+      );
+      console.log('Updated items:', newItems.filter(i => i.checked).map(i => ({ id: i.id, name: i.name, checked: i.checked })));
+      
+      // Save selections to localStorage
+      saveSelections(newItems);
+      
+      return newItems;
+    });
   };
 
   const toggleDeleteView = (id: number, event?: React.MouseEvent) => {
@@ -206,7 +303,8 @@ const GroceryList: React.FC = () => {
   };
 
   const handleTouchStart = (e: React.TouchEvent, id: number) => {
-    if (!groceryItems.find(item => item.id === id)?.checked) return;
+    const item = groceryItems.find(item => item.id === id);
+    if (!item?.checked) return;
     
     setTouchEnd(null);
     setTouchStart({
@@ -216,7 +314,8 @@ const GroceryList: React.FC = () => {
   };
 
   const handleTouchMove = (e: React.TouchEvent, id: number) => {
-    if (!touchStart) return;
+    const item = groceryItems.find(item => item.id === id);
+    if (!touchStart || !item?.checked) return;
     
     setTouchEnd({
       x: e.targetTouches[0].clientX,
@@ -225,7 +324,13 @@ const GroceryList: React.FC = () => {
   };
 
   const handleTouchEnd = (id: number) => {
-    if (!touchStart || !touchEnd || !groceryItems.find(item => item.id === id)?.checked) return;
+    const item = groceryItems.find(item => item.id === id);
+    if (!touchStart || !touchEnd || !item?.checked) {
+      // Reset touch state if this wasn't a valid swipe attempt
+      setTouchStart(null);
+      setTouchEnd(null);
+      return;
+    }
 
     const distanceX = touchStart.x - touchEnd.x;
     const distanceY = touchStart.y - touchEnd.y;
@@ -358,13 +463,23 @@ const GroceryList: React.FC = () => {
                   >
                     <div 
                       className={`item-wrapper ${item.showingDelete ? 'swipe-left' : ''}`}
-                      onTouchStart={(e) => handleTouchStart(e, item.id)}
-                      onTouchMove={(e) => handleTouchMove(e, item.id)}
-                      onTouchEnd={() => handleTouchEnd(item.id)}
+                      {...(item.checked ? {
+                        onTouchStart: (e) => handleTouchStart(e, item.id),
+                        onTouchMove: (e) => handleTouchMove(e, item.id),
+                        onTouchEnd: () => handleTouchEnd(item.id)
+                      } : {})}
                     >
                       <button 
                         className="item-content"
-                        onClick={() => item.checked ? toggleDeleteView(item.id) : toggleItemCheck(item.id)}
+                        onClick={() => {
+                          if (item.checked) {
+                            // If item is already selected, show delete option instead of deselecting
+                            toggleDeleteView(item.id);
+                          } else {
+                            // If item is not selected, select it
+                            toggleItemCheck(item.id);
+                          }
+                        }}
                       >
                         <div className="item-details">
                           <h3 className="item-name">
@@ -374,6 +489,7 @@ const GroceryList: React.FC = () => {
                           <div className="item-info">
                             <span className="item-size">{item.unit}</span>
                             <span className="item-brand">{item.brand}</span>
+                            {item.variant && <span className="item-variant">{item.variant}</span>}
                           </div>
                         </div>
                       </button>

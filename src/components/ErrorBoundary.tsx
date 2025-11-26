@@ -23,10 +23,7 @@ class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary details:', error, errorInfo);
     
-    // Show alert with error details for debugging
-    setTimeout(() => {
-      alert(`App Error: ${error.message}\n\nCheck console for details.`);
-    }, 100);
+    // Alert removed - check console for error details
   }
 
   public render() {

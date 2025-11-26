@@ -22,9 +22,10 @@ import {
   closeCircleOutline, 
   personOutline, 
   mailOutline,
-  refreshOutline
+  refreshOutline,
+  documentTextOutline
 } from 'ionicons/icons';
-import { getPendingUsers, approveUser, rejectUser } from '../services/supabaseService';
+import { getPendingUsers, approveUser, rejectUser, supabase } from '../services/supabaseService';
 import './AdminApproval.css';
 
 interface PendingUser {
@@ -36,6 +37,13 @@ interface PendingUser {
   userTypeCode: number;
   approval_status: string;
   created_at: string;
+  storeInfo?: {
+    storeName?: string;
+    bir_permit?: string;
+    dti_permit?: string;
+    bir_permit_image?: string;
+    dti_permit_image?: string;
+  };
 }
 
 const AdminApproval: React.FC = () => {
@@ -53,7 +61,29 @@ const AdminApproval: React.FC = () => {
       setLoading(true);
       const result = await getPendingUsers();
       if (result && 'data' in result) {
-        setPendingUsers(result.data || []);
+        const users = result.data || [];
+        
+        // Fetch store information for store users (userTypeCode = 3)
+        const usersWithStoreInfo = await Promise.all(
+          users.map(async (user) => {
+            if (user.userTypeCode === 3) {
+              // Fetch store info from GROCERY_STORE table
+              const { data: storeData } = await supabase
+                .from('GROCERY_STORE')
+                .select('storeName, bir_permit, dti_permit, bir_permit_image, dti_permit_image')
+                .eq('owner_id', user.auth_user_id)
+                .single();
+              
+              return {
+                ...user,
+                storeInfo: storeData || undefined
+              };
+            }
+            return user;
+          })
+        );
+        
+        setPendingUsers(usersWithStoreInfo);
       } else {
         console.error('Error loading pending users:', result?.error);
         showToastMessage('Error loading pending users', 'danger');
@@ -193,6 +223,72 @@ const AdminApproval: React.FC = () => {
                             {new Date(user.created_at).toLocaleDateString()}
                           </span>
                         </div>
+                        
+                        {/* Display Store Permit Information */}
+                        {user.userTypeCode === 3 && user.storeInfo && (
+                          <div className="store-permit-info" style={{ marginTop: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                            <h4 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#495057' }}>
+                              <IonIcon icon={documentTextOutline} style={{ marginRight: '4px' }} />
+                              Store Permits
+                            </h4>
+                            
+                            {user.storeInfo.storeName && (
+                              <p style={{ fontSize: '13px', marginBottom: '8px', color: '#6c757d' }}>
+                                <strong>Store Name:</strong> {user.storeInfo.storeName}
+                              </p>
+                            )}
+                            
+                            {/* BIR Permit */}
+                            <div style={{ marginBottom: '12px' }}>
+                              <p style={{ fontSize: '13px', marginBottom: '4px' }}>
+                                <strong>BIR Permit:</strong> {user.storeInfo.bir_permit || 'Not provided'}
+                              </p>
+                              {user.storeInfo.bir_permit_image && (
+                                <div style={{ marginTop: '8px' }}>
+                                  <img 
+                                    src={user.storeInfo.bir_permit_image} 
+                                    alt="BIR Permit" 
+                                    style={{ 
+                                      width: '100%', 
+                                      maxWidth: '300px',
+                                      height: 'auto',
+                                      borderRadius: '4px',
+                                      border: '1px solid #dee2e6',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => window.open(user.storeInfo?.bir_permit_image, '_blank')}
+                                  />
+                                  <p style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>Click to view full size</p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* DTI Permit */}
+                            <div>
+                              <p style={{ fontSize: '13px', marginBottom: '4px' }}>
+                                <strong>DTI Permit:</strong> {user.storeInfo.dti_permit || 'Not provided'}
+                              </p>
+                              {user.storeInfo.dti_permit_image && (
+                                <div style={{ marginTop: '8px' }}>
+                                  <img 
+                                    src={user.storeInfo.dti_permit_image} 
+                                    alt="DTI Permit" 
+                                    style={{ 
+                                      width: '100%', 
+                                      maxWidth: '300px',
+                                      height: 'auto',
+                                      borderRadius: '4px',
+                                      border: '1px solid #dee2e6',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => window.open(user.storeInfo?.dti_permit_image, '_blank')}
+                                  />
+                                  <p style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>Click to view full size</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="action-buttons">
                         <IonButton 

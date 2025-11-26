@@ -37,6 +37,7 @@ import {
   chevronUpOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
+import { useHistory } from 'react-router-dom';
 import AdminApproval from './AdminApproval';
 import ProfileMenu from '../components/ProfileMenu';
 import './AdminDashboard.css';
@@ -46,6 +47,7 @@ interface DashboardStats {
   pendingApprovals: number;
   approvedDTIUsers: number;
   approvedStores: number;
+  pendingStoreVerifications: number;
 }
 
 interface User {
@@ -62,16 +64,22 @@ interface User {
   store_name?: string;
   store_phone?: string;
   store_email?: string;
+  bir_permit?: string;
+  dti_permit?: string;
+  verified?: boolean;
+  store_id?: number;
 }
 
 const AdminDashboard: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
   const [email, setEmail] = useState('');
+  const history = useHistory();
   const [stats, setStats] = useState<DashboardStats>({
     totalShoppers: 0, // Changed from totalUsers to totalShoppers
     pendingApprovals: 0,
     approvedDTIUsers: 0,
-    approvedStores: 0
+    approvedStores: 0,
+    pendingStoreVerifications: 0
   });
 
   // Modal states
@@ -120,11 +128,20 @@ const AdminDashboard: React.FC = () => {
         .eq('userTypeCode', 3)
         .eq('approval_status', 'approved');
 
+      // Get pending store verifications (stores with permits but not verified)
+      const { count: pendingStoreVerifications } = await supabase
+        .from('GROCERY_STORE')
+        .select('*', { count: 'exact', head: true })
+        .eq('verified', false)
+        .not('bir_permit', 'is', null)
+        .not('dti_permit', 'is', null);
+
       setStats({
         totalShoppers: totalShoppers || 0, // Updated to use totalShoppers
         pendingApprovals: pendingApprovals || 0,
         approvedDTIUsers: approvedDTIUsers || 0,
-        approvedStores: approvedStores || 0
+        approvedStores: approvedStores || 0,
+        pendingStoreVerifications: pendingStoreVerifications || 0
       });
     } catch (error) {
       console.error('Error loading dashboard stats:', error);
@@ -231,6 +248,30 @@ const AdminDashboard: React.FC = () => {
     setExpandedUserId(null);
   };
 
+  const fetchPendingVerifications = () => {
+    history.push('/store-verification');
+  };
+
+  const handleVerifyStore = async (storeId: number, approve: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('GROCERY_STORE')
+        .update({ verified: approve })
+        .eq('storeId', storeId);
+
+      if (error) throw error;
+      
+      // Refresh the list
+      await fetchPendingVerifications();
+      await loadDashboardStats();
+      
+      alert(approve ? 'Store verified successfully!' : 'Store verification rejected.');
+    } catch (error) {
+      console.error('Error updating store verification:', error);
+      alert('Failed to update store verification. Please try again.');
+    }
+  };
+
   const toggleUserDetails = (userId: string) => {
     setExpandedUserId(expandedUserId === userId ? null : userId);
   };
@@ -317,7 +358,22 @@ const AdminDashboard: React.FC = () => {
 
         <IonRow>
           <IonCol size="12">
-            {/* This row is for future expansion if needed */}
+            <IonCard className="stats-card clickable" button onClick={fetchPendingVerifications}>
+              <IonCardContent>
+                <div className="stats-content">
+                  <IonIcon icon={checkmarkCircleOutline} className="stats-icon pending" />
+                  <div className="stats-info">
+                    <h2>{stats.pendingStoreVerifications}</h2>
+                    <p>Pending Store Verifications</p>
+                  </div>
+                  {stats.pendingStoreVerifications > 0 && (
+                    <IonBadge color="warning" style={{ marginLeft: 'auto' }}>
+                      Action Required
+                    </IonBadge>
+                  )}
+                </div>
+              </IonCardContent>
+            </IonCard>
           </IonCol>
         </IonRow>
       </IonGrid>
@@ -325,28 +381,28 @@ const AdminDashboard: React.FC = () => {
       {/* Quick Actions */}
       <div className="quick-actions">
         <h3>Quick Actions</h3>
-        <IonCard>
-          <IonCardContent>
-            <div className="action-item">
-              <div className="action-info">
-                <h4>Pending DTI & Store Registrations</h4>
-                <p>Review and approve new user applications</p>
+        {stats.pendingStoreVerifications > 0 && (
+          <IonCard>
+            <IonCardContent>
+              <div className="action-item">
+                <div className="action-info">
+                  <h4>Pending Store Verifications</h4>
+                  <p>Review and verify store permits (BIR & DTI)</p>
+                </div>
+                <div className="action-button">
+                  <IonBadge color="warning">{stats.pendingStoreVerifications}</IonBadge>
+                  <IonButton 
+                    fill="outline" 
+                    color="primary"
+                    onClick={fetchPendingVerifications}
+                  >
+                    Review
+                  </IonButton>
+                </div>
               </div>
-              <div className="action-button">
-                {stats.pendingApprovals > 0 && (
-                  <IonBadge color="warning">{stats.pendingApprovals}</IonBadge>
-                )}
-                <IonButton 
-                  fill="outline" 
-                  color="primary"
-                  onClick={() => setSelectedSegment('approvals')}
-                >
-                  Review
-                </IonButton>
-              </div>
-            </div>
-          </IonCardContent>
-        </IonCard>
+            </IonCardContent>
+          </IonCard>
+        )}
       </div>
 
       {/* Recent Activity */}
@@ -482,7 +538,36 @@ const AdminDashboard: React.FC = () => {
                                   {user.store_phone && (
                                     <p><strong>Phone:</strong> {user.store_phone}</p>
                                   )}
+                                  {user.bir_permit && (
+                                    <p><strong>BIR Permit:</strong> {user.bir_permit}</p>
+                                  )}
+                                  {user.dti_permit && (
+                                    <p><strong>DTI Permit:</strong> {user.dti_permit}</p>
+                                  )}
                                   <p><strong>Status:</strong> {user.approval_status}</p>
+                                  
+                                  {/* Verification Actions for pending verifications */}
+                                  {modalTitle === 'Pending Store Verifications' && user.store_id && (
+                                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                                      <IonButton 
+                                        expand="block" 
+                                        color="success"
+                                        onClick={() => handleVerifyStore(user.store_id!, true)}
+                                      >
+                                        <IonIcon icon={checkmarkCircleOutline} slot="start" />
+                                        Verify Store
+                                      </IonButton>
+                                      <IonButton 
+                                        expand="block" 
+                                        color="danger"
+                                        fill="outline"
+                                        onClick={() => handleVerifyStore(user.store_id!, false)}
+                                      >
+                                        <IonIcon icon={closeOutline} slot="start" />
+                                        Reject
+                                      </IonButton>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </>
