@@ -1,0 +1,353 @@
+.clarification-details-content {
+  --background: #f5f5f5;
+}
+
+.clarification-details-container {
+  padding: 16px;
+  padding-bottom: 32px;
+}
+
+/* Notice Header Card */
+.notice-header-card {
+  background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+  color: white;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.notice-header-card ion-card-content {
+  padding: 24px;
+}
+
+.notice-icon-wrapper {
+  margin-bottom: 12px;
+}
+
+.notice-warning-icon {
+  font-size: 64px;
+  color: white;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.notice-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin: 12px 0;
+  color: white;
+}
+
+.status-badge {
+  display: inline-block;
+  margin: 12px 0;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notice-date {
+  font-size: 14px;
+  margin-top: 8px;
+  opacity: 0.9;
+  color: white;
+}
+
+/* Product Info Card */
+.product-info-card {
+  margin-bottom: 16px;
+}
+
+.product-info-card ion-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.product-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.product-detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-size: 15px;
+  color: #666;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 15px;
+  color: #333;
+  font-weight: 600;
+}
+
+.detail-value.price {
+  color: #e74c3c;
+  font-size: 18px;
+}
+
+/* Message Card */
+.message-card {
+  margin-bottom: 16px;
+}
+
+.message-card ion-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.message-content {
+  background: #f9f9f9;
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid #ffc107;
+  margin-bottom: 12px;
+}
+
+.message-content p {
+  margin: 8px 0;
+  color: #333;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.attachment-button {
+  margin-top: 12px;
+}
+
+/* Response Card */
+.response-card {
+  margin-bottom: 16px;
+}
+
+.response-card ion-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.response-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.response-textarea {
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  margin-bottom: 16px;
+  background: white;
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 200px;
+}
+
+.response-textarea:focus {
+  border-color: var(--ion-color-primary);
+}
+
+.submit-button {
+  margin-top: 16px;
+  --padding-top: 14px;
+  --padding-bottom: 14px;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.resolved-notice {
+  text-align: center;
+  padding: 24px;
+  background: #e8f5e9;
+  border-radius: 8px;
+}
+
+.resolved-notice p {
+  margin-top: 12px;
+  color: #2e7d32;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.responded-notice {
+  background: #e3f2fd;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+  border-left: 4px solid #2196f3;
+}
+
+.responded-notice p {
+  margin: 8px 0;
+  color: #1565c0;
+  font-size: 14px;
+}
+
+.responded-notice .info-text {
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+}
+
+/* Documents Upload Section */
+.documents-upload-section {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 2px dashed #ccc;
+}
+
+.upload-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.upload-section-description {
+  font-size: 13px;
+  color: #666;
+  margin: 0 0 20px 0;
+}
+
+.document-upload-item {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.document-upload-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.document-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.file-name {
+  font-size: 13px;
+  color: #333;
+}
+
+.upload-status {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.uploaded-documents-list {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #90caf9;
+}
+
+.uploaded-documents-list h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1565c0;
+  margin: 0 0 12px 0;
+}
+
+.uploaded-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.uploaded-doc-item ion-icon {
+  font-size: 18px;
+  color: #2196f3;
+}
+
+.uploaded-doc-item a {
+  font-size: 14px;
+  color: #1976d2;
+  text-decoration: none;
+}
+
+.uploaded-doc-item a:hover {
+  text-decoration: underline;
+}
+
+/* Guidelines Card */
+.guidelines-card {
+  margin-bottom: 16px;
+  background: #fff3e0;
+}
+
+.guidelines-card ion-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e65100;
+}
+
+.guidelines-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #333;
+}
+
+.guidelines-list li {
+  margin: 10px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #555;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .clarification-details-container {
+    padding: 12px;
+  }
+
+  .notice-title {
+    font-size: 20px;
+  }
+
+  .product-detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .detail-value {
+    font-size: 14px;
+  }
+}

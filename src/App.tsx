@@ -44,6 +44,7 @@ const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const StoreVerification = React.lazy(() => import('./pages/StoreVerification'));
 const StoreDashboard = React.lazy(() => import('./pages/StoreDashboard'));
 const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
+const ItemDetails = React.lazy(() => import('./pages/ItemDetails'));
 const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
 const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
@@ -52,6 +53,7 @@ const GroceryCheckout = React.lazy(() => import('./pages/GroceryCheckout'));
 const OrderConfirmation = React.lazy(() => import('./pages/OrderConfirmation'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
 const OrderDetails = React.lazy(() => import('./pages/OrderDetails'));
+const ClarificationDetails = React.lazy(() => import('./pages/ClarificationDetails'));
 const MyPurchases = React.lazy(() => import('./pages/MyPurchases'));
 const CustomerOrderDetails = React.lazy(() => import('./pages/CustomerOrderDetails'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
@@ -962,15 +964,31 @@ const App: React.FC = () => {
 
           // Check if this is an OAuth callback
           if (data.url.includes('oauth-callback')) {
-            console.log('OAuth callback detected from deep link');
-            // Navigate to OAuth callback route to handle the auth result
-            window.location.href = '/oauth-callback';
+            console.log('✅ OAuth callback detected from deep link');
+            console.log('Full deep link URL:', data.url);
+            
+            // Extract the full URL with all parameters
+            const url = new URL(data.url);
+            const params = url.hash || url.search; // OAuth params are usually in hash or search
+            
+            console.log('Navigating to /oauth-callback with params:', params);
+            
+            // Navigate preserving ALL parameters
+            window.location.href = '/oauth-callback' + params;
           }
           // Check if this is a verified/confirmation callback
           else if (data.url.includes('verified')) {
-            console.log('Email verification detected from deep link');
-            // Navigate to verified route to handle the confirmation
-            window.location.href = '/verified';
+            console.log('✅ Email verification detected from deep link');
+            console.log('Full deep link URL:', data.url);
+            
+            // Extract the full URL with all parameters
+            const url = new URL(data.url);
+            const params = url.hash || url.search;
+            
+            console.log('Navigating to /verified with params:', params);
+            
+            // Navigate preserving ALL parameters
+            window.location.href = '/verified' + params;
           }
           // Check if this is a password reset callback
           else if (data.url.includes('reset-password')) {
@@ -1184,6 +1202,9 @@ const App: React.FC = () => {
           <Route exact path="/order-details/:orderId">
             <OrderDetails />
           </Route>
+          <Route exact path="/clarification-details/:id">
+            <ClarificationDetails />
+          </Route>
           <Route exact path="/my-purchases">
             <MyPurchases />
           </Route>
@@ -1220,6 +1241,24 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/dti-dashboard">
             <ProtectedDTIRoute />
+          </Route>
+          <Route exact path="/item-details/:storeItemId">
+            <React.Suspense fallback={
+              <IonPage>
+                <IonContent>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: '100%' 
+                  }}>
+                    <IonSpinner name="crescent" />
+                  </div>
+                </IonContent>
+              </IonPage>
+            }>
+              <ItemDetails />
+            </React.Suspense>
           </Route>
           <Route exact path="/nearby-users">
             <ProtectedNearbyUsersRoute />

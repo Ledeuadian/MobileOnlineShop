@@ -1,10 +1,79 @@
 import React, { useEffect, useState } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useHistory, Redirect } from 'react-router-dom';
 import { IonContent, IonSpinner, IonText } from '@ionic/react';
 import { createUserFromOAuthSession, checkUserApprovalStatus, supabase } from '../services/supabaseService';
 
 const OAuthCallback: React.FC = () => {
   const history = useHistory();
+  
+  console.log('🔐 OAuthCallback component loaded');
+  console.log('URL:', window.location.href);
+  console.log('Protocol:', window.location.protocol);
+  
+  // Check IMMEDIATELY if this is email confirmation - before any state initialization
+  const urlParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+  const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+  const type = urlParams.get('type') || hashParams.get('type');
+  const errorParam = urlParams.get('error') || hashParams.get('error');
+  const providerToken = urlParams.get('provider_token') || hashParams.get('provider_token');
+  
+  console.log('Token check:', { 
+    hasAccessToken: !!accessToken, 
+    hasRefreshToken: !!refreshToken, 
+    type, 
+    hasError: !!errorParam,
+    hasProviderToken: !!providerToken
+  });
+  
+  // DEBUG: Show what we detected
+  const debugInfo = {
+    hasAccessToken: !!accessToken,
+    hasRefreshToken: !!refreshToken,
+    type: type || 'none',
+    hasError: !!errorParam,
+    hasProviderToken: !!providerToken,
+    url: window.location.href,
+    decision: ''
+  };
+  
+  // If this looks like email confirmation (no provider_token), redirect immediately using React Router
+  // OAuth provider logins (Facebook, Google) have provider_token, so they skip this
+  if (accessToken && refreshToken && !errorParam && !providerToken) {
+    if (!type || type === 'signup' || type === 'email' || type === 'recovery') {
+      console.log('✅ Email confirmation detected (no provider_token), redirecting to /verified');
+      debugInfo.decision = 'Email confirmation - redirecting to /verified';
+      
+      // TEMPORARY DEBUG: Show what we detected
+      return (
+        <IonContent className="ion-padding" style={{ padding: '20px' }}>
+          <h2 style={{ color: 'green' }}>✅ DEBUG - Email Confirmation Detected</h2>
+          <pre style={{ background: '#f5f5f5', padding: '10px', fontSize: '12px', overflow: 'auto' }}>
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
+          <p>This will redirect to /verified (currently disabled for debugging)</p>
+        </IonContent>
+      );
+    }
+  }
+  
+  debugInfo.decision = 'OAuth provider login - should process normally';
+  console.log('⚠️ OAuth provider login or other flow, proceeding with normal OAuth processing');
+  
+  // TEMPORARY DEBUG: Show OAuth path
+  if (accessToken) {
+    return (
+      <IonContent className="ion-padding" style={{ padding: '20px' }}>
+        <h2 style={{ color: 'blue' }}>🔐 DEBUG - OAuth Provider Login</h2>
+        <pre style={{ background: '#f5f5f5', padding: '10px', fontSize: '12px', overflow: 'auto' }}>
+          {JSON.stringify(debugInfo, null, 2)}
+        </pre>
+        <p>Should process OAuth login (currently disabled for debugging)</p>
+      </IonContent>
+    );
+  }
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processed, setProcessed] = useState(false);
@@ -59,17 +128,38 @@ const OAuthCallback: React.FC = () => {
         // Look for access_token in both locations
         const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+        const type = urlParams.get('type') || hashParams.get('type');
         const error = urlParams.get('error') || hashParams.get('error');
         const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
         
-        console.log('OAuth tokens found:', { accessToken: !!accessToken, refreshToken: !!refreshToken, error, errorDescription });
+        console.log('OAuth tokens found:', { 
+          accessToken: !!accessToken, 
+          refreshToken: !!refreshToken, 
+          type,
+          error, 
+          errorDescription 
+        });
         
+        // Check if this is an email confirmation
+        // Email confirmations have tokens but may not have 'type' parameter
+        if (accessToken && refreshToken && !error) {
+          // If type is explicitly signup/email/recovery OR no type at all, treat as email confirmation
+          if (type === 'signup' || type === 'email' || type === 'recovery' || !type) {
+            console.log('🔐 Email confirmation detected, redirecting to success page...');
+            history.replace('/verified');
+            return;
+          }
+        }
+        
+        // Handle OAuth errors
         if (error) {
           console.error('OAuth error in URL:', error, errorDescription);
           setError(`OAuth error: ${errorDescription || error}`);
           setLoading(false);
           return;
         }
+        
+        // From here, process actual OAuth login
         
         // If we have tokens in URL, set them explicitly
         if (accessToken && refreshToken) {
@@ -224,6 +314,31 @@ const OAuthCallback: React.FC = () => {
         setLoading(false);
       }
     };
+    
+    // Check immediately if this is an email confirmation to avoid delay
+    const quickCheck = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+      const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+      const type = urlParams.get('type') || hashParams.get('type');
+      const error = urlParams.get('error') || hashParams.get('error');
+      
+      // If tokens present and no error, and either no type or email-related type, redirect immediately
+      if (accessToken && refreshToken && !error) {
+        if (type === 'signup' || type === 'email' || type === 'recovery' || !type) {
+          console.log('🔐 Quick check: Email confirmation detected, redirecting immediately...');
+          history.replace('/verified');
+          return true; // Indicate we handled it
+        }
+      }
+      return false; // Not an email confirmation, proceed with OAuth
+    };
+    
+    // Try quick check first
+    if (quickCheck()) {
+      return; // Email confirmation handled, don't proceed with OAuth flow
+    }
     
     // Add a delay to ensure OAuth session is properly set - longer for mobile
     const isMobile = window.location.protocol === 'capacitor:' || ('Capacitor' in window);

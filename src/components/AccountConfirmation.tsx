@@ -1,60 +1,67 @@
 import React, { useEffect, useState } from 'react';
-import { IonContent, IonButton, IonSpinner, IonIcon } from '@ionic/react';
-import { Link } from 'react-router-dom';
+import { IonContent, IonButton, IonIcon } from '@ionic/react';
+import { Link, useHistory } from 'react-router-dom';
 import { checkmarkCircleOutline, alertCircleOutline } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import './AccountConfirmation.css';
 
 const AccountConfirmation: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
+  const history = useHistory();
   const [error, setError] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
 
   useEffect(() => {
     const handleEmailConfirmation = async () => {
       try {
-        // Check if this is an email confirmation callback
-        const urlParams = new URLSearchParams(window.location.search);
-        const accessToken = urlParams.get('access_token');
-        const refreshToken = urlParams.get('refresh_token');
+        console.log('🔐 AccountConfirmation component loaded');
+        console.log('Current URL:', window.location.href);
+        console.log('Protocol:', window.location.protocol);
+        console.log('Pathname:', window.location.pathname);
+        console.log('Search:', window.location.search);
+        console.log('Hash:', window.location.hash);
         
-        if (accessToken && refreshToken) {
-          // Set the session using the tokens from the email confirmation
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          });
-
-          if (sessionError) {
-            console.error('Error setting session:', sessionError);
-            setError('Failed to confirm email. Please try again.');
-          } else {
-            console.log('Email confirmed successfully!');
-          }
-        } else {
-          // No tokens in URL, assume email was already confirmed
-          console.log('No confirmation tokens found, assuming email already confirmed');
+        // Check both URL search params and hash for tokens
+        const urlParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        
+        console.log('Search params:', Object.fromEntries(urlParams));
+        console.log('Hash params:', Object.fromEntries(hashParams));
+        
+        // Check for errors
+        const errorParam = urlParams.get('error') || hashParams.get('error');
+        const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
+        
+        if (errorParam) {
+          console.error('❌ Email confirmation error:', errorParam, errorDescription);
+          setError(errorDescription || errorParam);
+          return;
         }
+        
+        // Simply mark as verified - don't try to set session
+        console.log('✅ Email verification successful - showing success message');
+        setIsVerified(true);
+        
+        // Check if running in Capacitor (mobile app)
+        const isMobile = window.location.protocol === 'capacitor:' || ('Capacitor' in window);
+        
+        if (isMobile) {
+          console.log('Mobile app detected, will redirect to login in 3 seconds...');
+          // Redirect to login after 3 seconds on mobile
+          setTimeout(() => {
+            history.replace('/login');
+          }, 3000);
+        } else {
+          console.log('Web browser detected, showing success message without redirect');
+        }
+        
       } catch (err) {
         console.error('Error during email confirmation:', err);
         setError('An error occurred during email confirmation.');
-      } finally {
-        setIsLoading(false);
       }
     };
 
     handleEmailConfirmation();
-  }, []);
-
-  if (isLoading) {
-    return (
-      <IonContent className="account-confirmation-content">
-        <div className="confirmation-container">
-          <IonSpinner name="crescent" />
-          <p className="confirmation-message">Confirming your email...</p>
-        </div>
-      </IonContent>
-    );
-  }
+  }, [history]);
 
   if (error) {
     return (
@@ -73,18 +80,35 @@ const AccountConfirmation: React.FC = () => {
     );
   }
 
-  return (
-    <IonContent className="account-confirmation-content">
-      <div className="confirmation-container">
-        <IonIcon icon={checkmarkCircleOutline} className="confirmation-check" />
-        <h2 className="confirmation-title">Email Verified</h2>
-        <p className="confirmation-message">Your email address was successfully verified.</p>
-        <Link to="/login" style={{ textDecoration: 'none', width: '100%' }}>
-          <IonButton expand="block" className="confirmation-btn">Back to Login</IonButton>
-        </Link>
-      </div>
-    </IonContent>
-  );
+  if (isVerified) {
+    const isMobile = window.location.protocol === 'capacitor:' || ('Capacitor' in window);
+    
+    return (
+      <IonContent className="account-confirmation-content">
+        <div className="confirmation-container">
+          <IonIcon icon={checkmarkCircleOutline} className="confirmation-check" />
+          <h2 className="confirmation-title">Email Verified Successfully!</h2>
+          <p className="confirmation-message">
+            Your email address has been confirmed. You can now log in to your account.
+          </p>
+          {isMobile && (
+            <p className="confirmation-message" style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+              Redirecting to login page...
+            </p>
+          )}
+          {!isMobile && (
+            <Link to="/login" style={{ textDecoration: 'none', width: '100%' }}>
+              <IonButton expand="block" className="confirmation-btn">
+                Go to Login
+              </IonButton>
+            </Link>
+          )}
+        </div>
+      </IonContent>
+    );
+  }
+
+  return null;
 };
 
 export default AccountConfirmation;

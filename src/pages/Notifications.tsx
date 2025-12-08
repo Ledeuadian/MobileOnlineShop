@@ -17,9 +17,10 @@ import {
   IonItem,
   IonRefresher,
   IonRefresherContent,
+  IonBadge,
   RefresherEventDetail
 } from '@ionic/react';
-import { arrowBackOutline, personOutline, chevronForwardOutline } from 'ionicons/icons';
+import { arrowBackOutline, personOutline, chevronForwardOutline, warningOutline, documentTextOutline } from 'ionicons/icons';
 import './Notifications.css';
 
 interface Notification {
@@ -34,11 +35,31 @@ interface Notification {
   createdAt: string;
 }
 
-type FilterType = 'all' | 'ready' | 'picked_up';
+interface Clarification {
+  clarificationId: number;
+  storeId: number;
+  itemId: number | null;
+  dtiUserId: number;
+  title: string;
+  message: string;
+  attachmentUrl: string | null;
+  status: string;
+  storeResponse: string | null;
+  supplierInvoiceUrl: string | null;
+  deliveryReceiptUrl: string | null;
+  proofOfCostUrl: string | null;
+  freightJustificationUrl: string | null;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type FilterType = 'all' | 'ready' | 'picked_up' | 'clarifications';
 
 const Notifications: React.FC = () => {
   const history = useHistory();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [clarifications, setClarifications] = useState<Clarification[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [loading, setLoading] = useState(true);
 
@@ -82,6 +103,26 @@ const Notifications: React.FC = () => {
       }
 
       setNotifications(data || []);
+
+      // Fetch clarifications for this store owner
+      // First get the store ID for this user
+      const { data: storeData } = await supabase
+        .from('GROCERY_STORE')
+        .select('storeId')
+        .eq('owner_id', user.id)
+        .single();
+
+      if (storeData) {
+        const { data: clarificationData, error: clarificationError } = await supabase
+          .from('DTI_CLARIFICATIONS')
+          .select('*')
+          .eq('storeId', storeData.storeId)
+          .order('createdAt', { ascending: false });
+
+        if (!clarificationError) {
+          setClarifications(clarificationData || []);
+        }
+      }
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -110,6 +151,22 @@ const Notifications: React.FC = () => {
     history.push(`/order-details/${notification.orderId}`);
   };
 
+  const handleClarificationClick = async (clarification: Clarification) => {
+    // Mark as read
+    if (!clarification.isRead) {
+      await supabase
+        .from('DTI_CLARIFICATIONS')
+        .update({ isRead: true })
+        .eq('clarificationId', clarification.clarificationId);
+      
+      // Reload notifications
+      loadNotifications();
+    }
+    
+    // Navigate to clarification details page
+    history.push(`/clarification-details/${clarification.clarificationId}`);
+  };
+
   const getTimeAgo = (timestamp: string) => {
     const now = new Date();
     const created = new Date(timestamp);
@@ -126,10 +183,12 @@ const Notifications: React.FC = () => {
     return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   };
 
-  const filteredNotifications = notifications.filter(notif => {
+  const filteredNotifications = filter === 'clarifications' ? [] : notifications.filter(notif => {
     if (filter === 'all') return true;
     return notif.status === filter;
   });
+
+  const unreadClarificationsCount = clarifications.filter(c => !c.isRead).length;
 
   return (
     <IonPage>
@@ -157,7 +216,7 @@ const Notifications: React.FC = () => {
             className="filter-segment"
           >
             <IonSegmentButton value="all">
-              <IonLabel>All</IonLabel>
+              <IonLabel>Orders</IonLabel>
             </IonSegmentButton>
             <IonSegmentButton value="ready">
               <IonLabel>Ready</IonLabel>
@@ -165,12 +224,72 @@ const Notifications: React.FC = () => {
             <IonSegmentButton value="picked_up">
               <IonLabel>Picked Up</IonLabel>
             </IonSegmentButton>
+            <IonSegmentButton value="clarifications">
+              <IonLabel>
+                DTI Notices
+                {unreadClarificationsCount > 0 && (
+                  <IonBadge color="danger" style={{ marginLeft: '4px' }}>
+                    {unreadClarificationsCount}
+                  </IonBadge>
+                )}
+              </IonLabel>
+            </IonSegmentButton>
           </IonSegment>
 
           {/* Notifications List */}
           <IonList className="notifications-list">
             {loading ? (
               <div className="loading-message">Loading notifications...</div>
+            ) : filter === 'clarifications' ? (
+              clarifications.length === 0 ? (
+                <div className="empty-message">No DTI notices</div>
+              ) : (
+                clarifications.map((clarif) => (
+                  <IonItem 
+                    key={clarif.clarificationId}
+                    button
+                    onClick={() => handleClarificationClick(clarif)}
+                    className={`notification-item clarification-item ${!clarif.isRead ? 'unread' : ''}`}
+                    lines="none"
+                  >
+                    <div className="notification-content">
+                      <div className="notification-header">
+                        <IonIcon icon={warningOutline} className="user-icon" style={{ color: '#ffc107' }} />
+                        <span className="customer-name" style={{ color: '#ffc107', fontWeight: 'bold' }}>
+                          DTI Notice of Clarification
+                        </span>
+                      </div>
+                      
+                      <div className="notification-details">
+                        <p className="order-info" style={{ fontWeight: '600', marginTop: '0.5rem' }}>
+                          {clarif.title}
+                        </p>
+                        <p className="payment-info" style={{ fontSize: '13px', color: '#666', marginTop: '0.25rem' }}>
+                          {clarif.message.length > 100 ? clarif.message.substring(0, 100) + '...' : clarif.message}
+                        </p>
+                        {clarif.attachmentUrl && (
+                          <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <IonIcon icon={documentTextOutline} style={{ fontSize: '16px', color: '#999' }} />
+                            <span style={{ fontSize: '12px', color: '#999' }}>Attachment included</span>
+                          </div>
+                        )}
+                        <IonBadge 
+                          color={clarif.status === 'pending' ? 'warning' : clarif.status === 'responded' ? 'primary' : 'success'} 
+                          style={{ marginTop: '0.5rem' }}
+                        >
+                          {clarif.status.toUpperCase()}
+                        </IonBadge>
+                      </div>
+                      
+                      <div className="notification-footer">
+                        <span className="time-ago">{getTimeAgo(clarif.createdAt)}</span>
+                      </div>
+                    </div>
+                    
+                    <IonIcon icon={chevronForwardOutline} slot="end" className="chevron" />
+                  </IonItem>
+                ))
+              )
             ) : filteredNotifications.length === 0 ? (
               <div className="empty-message">No notifications</div>
             ) : (
