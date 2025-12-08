@@ -21,7 +21,7 @@ import {
   IonSpinner
 } from '@ionic/react';
 import { arrowBackOutline, cartOutline, chevronForwardOutline } from 'ionicons/icons';
-import './Cart.css';
+import './MyPurchases.css';
 
 interface Purchase {
   orderId: number;
@@ -42,7 +42,7 @@ interface Purchase {
 
 type FilterType = 'to_pickup' | 'completed';
 
-const Cart: React.FC = () => {
+const MyPurchases: React.FC = () => {
   const history = useHistory();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [filter, setFilter] = useState<FilterType>('to_pickup');
@@ -215,5 +215,4 @@ const Cart: React.FC = () => {
   );
 };
 
-export default Cart;
-
+export default MyPurchases;

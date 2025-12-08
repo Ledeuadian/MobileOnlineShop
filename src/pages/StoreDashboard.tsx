@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useHistory } from 'react-router-dom';
 import {
   IonContent,
   IonHeader,
@@ -26,7 +27,8 @@ import {
   IonSelectOption,
   IonAlert,
   IonProgressBar,
-  IonIcon
+  IonIcon,
+  IonBadge
 } from '@ionic/react';
 import {
   storefront,
@@ -39,7 +41,10 @@ import {
   cube,
   logOutOutline,
   navigate,
-  locationOutline
+  locationOutline,
+  alertCircle,
+  checkmarkCircle,
+  notificationsOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import { LocationService } from '../services/locationService';
@@ -59,6 +64,11 @@ interface StoreInfo {
   store_image_url: string;
   latitude?: number;
   longitude?: number;
+  bir_permit?: string;
+  dti_permit?: string;
+  bir_permit_image?: string;
+  dti_permit_image?: string;
+  verified?: boolean;
 }
 
 interface StockItem {
@@ -87,7 +97,9 @@ interface ProductTypeSuggestion {
 }
 
 const StoreDashboard: React.FC = () => {
+  const history = useHistory();
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
+  const [dateRange, setDateRange] = useState<string>('week'); // 'week', 'month', 'year', 'range'
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
     name: '',
     store_description: '',
@@ -96,7 +108,10 @@ const StoreDashboard: React.FC = () => {
     store_email: '',
     store_image_url: '',
     latitude: undefined,
-    longitude: undefined
+    longitude: undefined,
+    bir_permit: '',
+    dti_permit: '',
+    verified: false
   });
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
@@ -130,6 +145,17 @@ const StoreDashboard: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<{id: string; email?: string} | null>(null);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [isStoreDataLoaded, setIsStoreDataLoaded] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  
+  // Permit image upload states
+  const [selectedBirPermitImage, setSelectedBirPermitImage] = useState<File | null>(null);
+  const [selectedDtiPermitImage, setSelectedDtiPermitImage] = useState<File | null>(null);
+  const [birPermitImagePreview, setBirPermitImagePreview] = useState<string | null>(null);
+  const [dtiPermitImagePreview, setDtiPermitImagePreview] = useState<string | null>(null);
+  const [isBirPermitUploading, setIsBirPermitUploading] = useState(false);
+  const [isDtiPermitUploading, setIsDtiPermitUploading] = useState(false);
   
   // Product Type Matching States
   const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
@@ -148,6 +174,38 @@ const StoreDashboard: React.FC = () => {
     'Household Items'
   ];
 
+  const loadUnreadNotifications = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get public userId
+      const { data: userData } = await supabase
+        .from('USER')
+        .select('userId')
+        .eq('email', user.email)
+        .single();
+
+      if (!userData) return;
+
+      // Count unread notifications
+      const { count, error } = await supabase
+        .from('NOTIFICATIONS')
+        .select('*', { count: 'exact', head: true })
+        .eq('userId', userData.userId)
+        .eq('isRead', false);
+
+      if (error) {
+        console.error('Error loading notifications count:', error);
+        return;
+      }
+
+      setUnreadNotifications(count || 0);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
   useEffect(() => {
     const loadUserData = async () => {
       try {
@@ -156,6 +214,7 @@ const StoreDashboard: React.FC = () => {
           setCurrentUser(user);
           await loadStoreInfo(user.id);
           await loadStockItems(user.id);
+          await loadUnreadNotifications();
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -186,10 +245,16 @@ const StoreDashboard: React.FC = () => {
           latitude: data.latitude,
           longitude: data.longitude
         };
+        console.log('Store info loaded:', mappedData);
+        console.log('Verified status:', mappedData.verified);
         setStoreInfo(mappedData);
+        setIsStoreDataLoaded(true);
+      } else {
+        setIsStoreDataLoaded(true);
       }
     } catch (error) {
       console.error('Error loading store info:', error);
+      setIsStoreDataLoaded(true);
     }
   };
 
@@ -737,6 +802,174 @@ I'll automatically extract and save them for you!
     }
   };
 
+  // BIR Permit Image Upload Functions
+  const handleBirPermitImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setAlertMessage('Please select a valid image file');
+        setShowAlert(true);
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setAlertMessage('Image size must be less than 5MB');
+        setShowAlert(true);
+        return;
+      }
+      
+      setSelectedBirPermitImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setBirPermitImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadBirPermitImageToSupabase = async (): Promise<string | null> => {
+    if (!selectedBirPermitImage || !currentUser) return null;
+    
+    setIsBirPermitUploading(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+
+      const fileExt = selectedBirPermitImage.name.split('.').pop();
+      const fileName = `bir-permit-${currentUser.id}-${Date.now()}.${fileExt}`;
+      
+      const { error } = await supabase.storage
+        .from('Images')
+        .upload(fileName, selectedBirPermitImage, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: selectedBirPermitImage.type
+        });
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('Images')
+        .getPublicUrl(fileName);
+      
+      return urlData.publicUrl;
+      
+    } catch (error) {
+      console.error('Error uploading BIR permit image:', error);
+      setAlertMessage('Error uploading BIR permit image. Please try again.');
+      setShowAlert(true);
+      return null;
+    } finally {
+      setIsBirPermitUploading(false);
+    }
+  };
+
+  const handleBirPermitImageUpload = async () => {
+    if (!selectedBirPermitImage) return;
+    
+    await ensureStorageBucket();
+    
+    const imageUrl = await uploadBirPermitImageToSupabase();
+    if (imageUrl) {
+      setStoreInfo({...storeInfo, bir_permit_image: imageUrl});
+      setSelectedBirPermitImage(null);
+      setBirPermitImagePreview(imageUrl);
+      setAlertMessage('BIR permit image uploaded successfully!');
+      setShowAlert(true);
+    }
+  };
+
+  // DTI Permit Image Upload Functions
+  const handleDtiPermitImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setAlertMessage('Please select a valid image file');
+        setShowAlert(true);
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setAlertMessage('Image size must be less than 5MB');
+        setShowAlert(true);
+        return;
+      }
+      
+      setSelectedDtiPermitImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setDtiPermitImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadDtiPermitImageToSupabase = async (): Promise<string | null> => {
+    if (!selectedDtiPermitImage || !currentUser) return null;
+    
+    setIsDtiPermitUploading(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+
+      const fileExt = selectedDtiPermitImage.name.split('.').pop();
+      const fileName = `dti-permit-${currentUser.id}-${Date.now()}.${fileExt}`;
+      
+      const { error } = await supabase.storage
+        .from('Images')
+        .upload(fileName, selectedDtiPermitImage, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: selectedDtiPermitImage.type
+        });
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('Images')
+        .getPublicUrl(fileName);
+      
+      return urlData.publicUrl;
+      
+    } catch (error) {
+      console.error('Error uploading DTI permit image:', error);
+      setAlertMessage('Error uploading DTI permit image. Please try again.');
+      setShowAlert(true);
+      return null;
+    } finally {
+      setIsDtiPermitUploading(false);
+    }
+  };
+
+  const handleDtiPermitImageUpload = async () => {
+    if (!selectedDtiPermitImage) return;
+    
+    await ensureStorageBucket();
+    
+    const imageUrl = await uploadDtiPermitImageToSupabase();
+    if (imageUrl) {
+      setStoreInfo({...storeInfo, dti_permit_image: imageUrl});
+      setSelectedDtiPermitImage(null);
+      setDtiPermitImagePreview(imageUrl);
+      setAlertMessage('DTI permit image uploaded successfully!');
+      setShowAlert(true);
+    }
+  };
+
   const saveStockItem = async () => {
     try {
       console.log('🧪 Checking store info:', storeInfo);
@@ -949,67 +1182,313 @@ I'll automatically extract and save them for you!
     }
   };
 
-  const renderDashboard = () => (
-    <div className="dashboard-content">
-      <IonGrid>
-        <IonRow>
-          <IonCol size="12" sizeMd="6">
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>Store Overview</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <div className="stats-item">
-                  <IonIcon icon={storefront} />
-                  <div>
-                    <h3>{storeInfo.name || 'Not Set'}</h3>
-                    <p>Store Name</p>
+  // Submit verification request with permits
+  const handleSubmitVerification = async () => {
+    try {
+      if (!storeInfo.bir_permit || !storeInfo.dti_permit) {
+        setAlertMessage('Please fill in both BIR and DTI permit numbers');
+        setShowAlert(true);
+        return;
+      }
+
+      if (!storeInfo.bir_permit_image || !storeInfo.dti_permit_image) {
+        setAlertMessage('Please upload both BIR and DTI permit images');
+        setShowAlert(true);
+        return;
+      }
+
+      const storeId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
+      
+      if (!storeId) {
+        setAlertMessage('Store information not found. Please contact support.');
+        setShowAlert(true);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('GROCERY_STORE')
+        .update({
+          bir_permit: storeInfo.bir_permit,
+          dti_permit: storeInfo.dti_permit,
+          bir_permit_image: storeInfo.bir_permit_image,
+          dti_permit_image: storeInfo.dti_permit_image,
+          verified: false
+        })
+        .eq('storeId', storeId);
+
+      if (error) {
+        console.error('Error submitting verification:', error);
+        setAlertMessage('Failed to submit verification request. Please try again.');
+        setShowAlert(true);
+      } else {
+        setAlertMessage('Verification request submitted! Please wait for admin approval.');
+        setShowAlert(true);
+        setIsVerificationModalOpen(false);
+        // Refresh store info to get updated verification status
+        if (currentUser) {
+          await loadStoreInfo(currentUser.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting verification:', error);
+      setAlertMessage('An error occurred. Please try again.');
+      setShowAlert(true);
+    }
+  };
+
+  // Mock data for sales report
+  const getMockSalesData = () => {
+    const data = {
+      week: {
+        dateText: '5 - 11 OCT 2025',
+        totalSales: 12345.00,
+        totalCustomers: 76,
+        totalOrders: 103,
+        averageOrderValue: 123.00
+      },
+      month: {
+        dateText: 'OCTOBER 2025',
+        totalSales: 45678.00,
+        totalCustomers: 234,
+        totalOrders: 389,
+        averageOrderValue: 117.50
+      },
+      year: {
+        dateText: '2025',
+        totalSales: 456789.00,
+        totalCustomers: 2156,
+        totalOrders: 3567,
+        averageOrderValue: 128.10
+      },
+      range: {
+        dateText: 'CUSTOM RANGE',
+        totalSales: 23456.00,
+        totalCustomers: 145,
+        totalOrders: 256,
+        averageOrderValue: 91.63
+      }
+    };
+    return data[dateRange as keyof typeof data];
+  };
+
+  // Mock data for popular items
+  const mockPopularItems = [
+    { name: 'Vinegar', size: '700ml', brand: 'Datu Puti', unitsSold: 150 },
+    { name: 'Toothpaste', size: '40g', brand: 'Colgate', unitsSold: 130 },
+    { name: 'Soy Sauce', size: '1L', brand: 'Silver Swan', unitsSold: 125 },
+    { name: 'Shampoo', size: '200ml', brand: 'Palmolive', unitsSold: 118 },
+    { name: 'Detergent', size: '500g', brand: 'Tide', unitsSold: 105 }
+  ];
+
+  const renderDashboard = () => {
+    const salesData = getMockSalesData();
+    
+    return (
+      <div className="dashboard-content">
+        {/* Date Range Selector */}
+        <div style={{ padding: '0 16px', marginBottom: '16px' }}>
+          <IonSegment 
+            value={dateRange} 
+            onIonChange={(e) => setDateRange(e.detail.value as string)}
+            style={{ 
+              '--background': '#f5f5f5',
+              borderRadius: '25px',
+              padding: '4px'
+            }}
+          >
+            <IonSegmentButton value="week" style={{ borderRadius: '25px', minHeight: '36px' }}>
+              <IonLabel>Week</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="month" style={{ borderRadius: '25px', minHeight: '36px' }}>
+              <IonLabel>Month</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="year" style={{ borderRadius: '25px', minHeight: '36px' }}>
+              <IonLabel>Year</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="range" style={{ borderRadius: '25px', minHeight: '36px' }}>
+              <IonLabel>Range</IonLabel>
+            </IonSegmentButton>
+          </IonSegment>
+        </div>
+
+        {/* Sales Statistics Card */}
+        <div style={{ padding: '0 16px', marginBottom: '16px' }}>
+          <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+            <IonCardContent style={{ padding: '16px' }}>
+              <p style={{ 
+                fontSize: '14px', 
+                color: '#666', 
+                fontStyle: 'italic', 
+                marginBottom: '12px',
+                marginTop: 0 
+              }}>
+                Showing data for: {salesData.dateText}
+              </p>
+              
+              <IonGrid style={{ padding: 0 }}>
+                <IonRow>
+                  <IonCol size="6" style={{ padding: '4px' }}>
+                    <div style={{ 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: '8px', 
+                      padding: '16px',
+                      backgroundColor: '#fff'
+                    }}>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        ₱ {salesData.totalSales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
+                        TOTAL SALES
+                      </div>
+                    </div>
+                  </IonCol>
+                  
+                  <IonCol size="6" style={{ padding: '4px' }}>
+                    <div style={{ 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: '8px', 
+                      padding: '16px',
+                      backgroundColor: '#fff'
+                    }}>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        {salesData.totalCustomers}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
+                        TOTAL CUSTOMERS
+                      </div>
+                    </div>
+                  </IonCol>
+                </IonRow>
+                
+                <IonRow>
+                  <IonCol size="6" style={{ padding: '4px' }}>
+                    <div style={{ 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: '8px', 
+                      padding: '16px',
+                      backgroundColor: '#fff'
+                    }}>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        {salesData.totalOrders}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
+                        TOTAL ORDERS
+                      </div>
+                    </div>
+                  </IonCol>
+                  
+                  <IonCol size="6" style={{ padding: '4px' }}>
+                    <div style={{ 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: '8px', 
+                      padding: '16px',
+                      backgroundColor: '#fff'
+                    }}>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        ₱ {salesData.averageOrderValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
+                        AVERAGE ORDER VALUE
+                      </div>
+                    </div>
+                  </IonCol>
+                </IonRow>
+              </IonGrid>
+            </IonCardContent>
+          </IonCard>
+        </div>
+
+        {/* Popular Items Section */}
+        <div style={{ padding: '0 16px' }}>
+          <h2 style={{ 
+            fontSize: '20px', 
+            fontWeight: 'bold', 
+            marginBottom: '12px',
+            marginTop: '8px',
+            color: '#333'
+          }}>
+            Popular Items
+          </h2>
+          
+          <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+            <IonCardContent style={{ padding: '0' }}>
+              {/* Table Header */}
+              <div style={{ 
+                display: 'flex', 
+                padding: '12px 16px',
+                borderBottom: '1px solid #e0e0e0',
+                backgroundColor: '#f9f9f9'
+              }}>
+                <div style={{ flex: 1, fontSize: '14px', fontWeight: '600', color: '#333' }}>
+                  Item
+                </div>
+                <div style={{ width: '100px', fontSize: '14px', fontWeight: '600', color: '#333', textAlign: 'right' }}>
+                  Units Sold
+                </div>
+              </div>
+              
+              {/* Table Rows */}
+              {mockPopularItems.map((item, index) => (
+                <div 
+                  key={index}
+                  style={{ 
+                    display: 'flex', 
+                    padding: '12px 16px',
+                    borderBottom: index < mockPopularItems.length - 1 ? '1px solid #f0f0f0' : 'none',
+                    backgroundColor: index % 2 === 0 ? '#fff' : '#fafafa'
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '15px', fontWeight: '500', color: '#333', marginBottom: '2px' }}>
+                      {item.name}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#666' }}>
+                      {item.size} &nbsp;&nbsp; {item.brand}
+                    </div>
+                  </div>
+                  <div style={{ 
+                    width: '100px', 
+                    fontSize: '16px', 
+                    fontWeight: 'bold', 
+                    color: '#333',
+                    textAlign: 'right',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end'
+                  }}>
+                    {item.unitsSold}
                   </div>
                 </div>
-                <div className="stats-item">
-                  <IonIcon icon={cube} />
-                  <div>
-                    <h3>{stockItems.length}</h3>
-                    <p>Total Items</p>
-                  </div>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-          <IonCol size="12" sizeMd="6">
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>Quick Actions</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonButton 
-                  expand="block" 
-                  fill="outline" 
-                  onClick={() => setIsStoreModalOpen(true)}
-                  className="action-button"
-                >
-                  <IonIcon icon={storefront} slot="start" />
-                  Update Store Info
-                </IonButton>
-                <IonButton 
-                  expand="block" 
-                  fill="outline" 
-                  onClick={openAddItem}
-                  className="action-button"
-                >
-                  <IonIcon icon={add} slot="start" />
-                  Add New Item
-                </IonButton>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-        </IonRow>
-      </IonGrid>
-    </div>
-  );
+              ))}
+            </IonCardContent>
+          </IonCard>
+        </div>
+      </div>
+    );
+  };
 
   const renderStoreInfo = () => (
     <div className="store-info-content">
+      {/* Permits Section */}
+      <IonCard>
+        <IonCardHeader>
+          <IonCardTitle>Permits</IonCardTitle>
+        </IonCardHeader>
+        <IonCardContent>
+          <div className="store-details">
+            <IonItem>
+              <IonLabel position="stacked">BIR Permit</IonLabel>
+              <p>{storeInfo.bir_permit || 'Not set'}</p>
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">DTI Permit</IonLabel>
+              <p>{storeInfo.dti_permit || 'Not set'}</p>
+            </IonItem>
+          </div>
+        </IonCardContent>
+      </IonCard>
+
+      {/* Store Information Section */}
       <IonCard>
         <IonCardHeader>
           <IonCardTitle>Store Information</IonCardTitle>
@@ -1137,6 +1616,16 @@ I'll automatically extract and save them for you!
       <IonHeader>
         <IonToolbar>
           <IonTitle>Store Dashboard</IonTitle>
+          <IonButtons slot="end">
+            <IonButton onClick={() => history.push('/notifications')}>
+              <IonIcon icon={notificationsOutline} />
+              {unreadNotifications > 0 && (
+                <IonBadge color="danger" style={{ position: 'absolute', top: 8, right: 8, fontSize: '0.7rem' }}>
+                  {unreadNotifications}
+                </IonBadge>
+              )}
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
@@ -1176,107 +1665,139 @@ I'll automatically extract and save them for you!
           </IonHeader>
           <IonContent>
             <div className="modal-content">
-              <IonItem className="compact-item">
-                <IonLabel position="stacked">Store Name</IonLabel>
-                <IonInput
-                  value={storeInfo.name}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, name: e.detail.value!})}
-                  placeholder="Enter store name"
-                />
-              </IonItem>
-              
-              <IonItem className="compact-item">
-                <IonLabel position="stacked">Description</IonLabel>
-                <IonTextarea
-                  value={storeInfo.store_description}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, store_description: e.detail.value!})}
-                  placeholder="Enter store description"
-                  rows={2}
-                />
-              </IonItem>
-              
-              <IonItem className="compact-item">
-                <IonLabel position="stacked">
-                  Address
-                  {storeInfo.latitude && storeInfo.longitude && (
-                    <small style={{ color: '#28a745', fontSize: '11px', fontWeight: 'normal' }}>
-                      <br />📍 Lat: {storeInfo.latitude.toFixed(4)}, Lng: {storeInfo.longitude.toFixed(4)}
-                    </small>
-                  )}
-                </IonLabel>
-                <IonTextarea
-                  value={storeInfo.store_address}
-                  onIonInput={(e) => setStoreInfo({...storeInfo, store_address: e.detail.value!})}
-                  placeholder="Enter store address"
-                  rows={2}
-                />
-              </IonItem>
-              
-              {/* Address Action Buttons */}
-              <IonItem className="button-group-item">
-                <IonGrid style={{ padding: '0' }}>
+              {/* Permits Section */}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                  Permits
+                </h3>
+                
+                <IonItem className="compact-item" style={{ marginBottom: '8px' }}>
+                  <IonLabel position="stacked">BIR Permit</IonLabel>
+                  <IonInput
+                    value={storeInfo.bir_permit || ''}
+                    onIonInput={(e) => setStoreInfo({...storeInfo, bir_permit: e.detail.value!})}
+                    placeholder="Enter BIR Permit number"
+                  />
+                </IonItem>
+                
+                <IonItem className="compact-item">
+                  <IonLabel position="stacked">DTI Permit</IonLabel>
+                  <IonInput
+                    value={storeInfo.dti_permit || ''}
+                    onIonInput={(e) => setStoreInfo({...storeInfo, dti_permit: e.detail.value!})}
+                    placeholder="Enter DTI Permit number"
+                  />
+                </IonItem>
+              </div>
+
+              {/* Profile Section */}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                  Profile
+                </h3>
+                
+                <IonItem className="compact-item">
+                  <IonLabel position="stacked">Store Name</IonLabel>
+                  <IonInput
+                    value={storeInfo.name}
+                    onIonInput={(e) => setStoreInfo({...storeInfo, name: e.detail.value!})}
+                    placeholder="Enter store name"
+                  />
+                </IonItem>
+                
+                <IonItem className="compact-item">
+                  <IonLabel position="stacked">Description</IonLabel>
+                  <IonTextarea
+                    value={storeInfo.store_description}
+                    onIonInput={(e) => setStoreInfo({...storeInfo, store_description: e.detail.value!})}
+                    placeholder="Enter store description"
+                    rows={2}
+                  />
+                </IonItem>
+                
+                <IonItem className="compact-item">
+                  <IonLabel position="stacked">
+                    Address
+                    {storeInfo.latitude && storeInfo.longitude && (
+                      <small style={{ color: '#28a745', fontSize: '11px', fontWeight: 'normal' }}>
+                        <br />📍 Lat: {storeInfo.latitude.toFixed(4)}, Lng: {storeInfo.longitude.toFixed(4)}
+                      </small>
+                    )}
+                  </IonLabel>
+                  <IonTextarea
+                    value={storeInfo.store_address}
+                    onIonInput={(e) => setStoreInfo({...storeInfo, store_address: e.detail.value!})}
+                    placeholder="Enter store address"
+                    rows={2}
+                  />
+                </IonItem>
+                
+                {/* Address Action Buttons */}
+                <IonItem className="button-group-item">
+                  <IonGrid style={{ padding: '0' }}>
+                    <IonRow>
+                      <IonCol size="6" style={{ padding: '0 4px 0 0' }}>
+                        <IonButton 
+                          expand="block" 
+                          fill="outline" 
+                          size="small"
+                          color="primary"
+                          onClick={handleGeocodeAddress}
+                          disabled={isGeocodingAddress || !storeInfo.store_address.trim()}
+                        >
+                          <IonIcon icon={locationOutline} slot="start" />
+                          {isGeocodingAddress ? 'Finding...' : 'Get Coordinates'}
+                        </IonButton>
+                      </IonCol>
+                      <IonCol size="6" style={{ padding: '0 0 0 4px' }}>
+                        <IonButton 
+                          expand="block" 
+                          fill="solid" 
+                          size="small"
+                          color="tertiary"
+                          onClick={() => setIsMapModalOpen(true)}
+                          style={{
+                            '--background': '#FF69B4',
+                            '--background-activated': '#FF1493',
+                            '--background-hover': '#FF1493',
+                            '--color': 'white'
+                          }}
+                        >
+                          <IonIcon icon={navigate} slot="start" />
+                          Pin on Map
+                        </IonButton>
+                      </IonCol>
+                    </IonRow>
+                  </IonGrid>
+                </IonItem>
+                
+                <IonGrid style={{ padding: '0', marginTop: '8px' }}>
                   <IonRow>
                     <IonCol size="6" style={{ padding: '0 4px 0 0' }}>
-                      <IonButton 
-                        expand="block" 
-                        fill="outline" 
-                        size="small"
-                        color="primary"
-                        onClick={handleGeocodeAddress}
-                        disabled={isGeocodingAddress || !storeInfo.store_address.trim()}
-                      >
-                        <IonIcon icon={locationOutline} slot="start" />
-                        {isGeocodingAddress ? 'Finding...' : 'Get Coordinates'}
-                      </IonButton>
+                      <IonItem className="compact-item">
+                        <IonLabel position="stacked">Phone</IonLabel>
+                        <IonInput
+                          value={storeInfo.store_phone}
+                          onIonInput={(e) => setStoreInfo({...storeInfo, store_phone: e.detail.value!})}
+                          placeholder="Enter phone number"
+                          inputMode="tel"
+                        />
+                      </IonItem>
                     </IonCol>
                     <IonCol size="6" style={{ padding: '0 0 0 4px' }}>
-                      <IonButton 
-                        expand="block" 
-                        fill="solid" 
-                        size="small"
-                        color="tertiary"
-                        onClick={() => setIsMapModalOpen(true)}
-                        style={{
-                          '--background': '#FF69B4',
-                          '--background-activated': '#FF1493',
-                          '--background-hover': '#FF1493',
-                          '--color': 'white'
-                        }}
-                      >
-                        <IonIcon icon={navigate} slot="start" />
-                        Pin on Map
-                      </IonButton>
+                      <IonItem className="compact-item">
+                        <IonLabel position="stacked">Email</IonLabel>
+                        <IonInput
+                          value={storeInfo.store_email}
+                          onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
+                          placeholder="Enter email address"
+                          type="email"
+                        />
+                      </IonItem>
                     </IonCol>
                   </IonRow>
                 </IonGrid>
-              </IonItem>
-              
-              <IonGrid style={{ padding: '0', marginTop: '8px' }}>
-                <IonRow>
-                  <IonCol size="6" style={{ padding: '0 4px 0 0' }}>
-                    <IonItem className="compact-item">
-                      <IonLabel position="stacked">Phone</IonLabel>
-                      <IonInput
-                        value={storeInfo.store_phone}
-                        onIonInput={(e) => setStoreInfo({...storeInfo, store_phone: e.detail.value!})}
-                        placeholder="Enter phone number"
-                        inputMode="tel"
-                      />
-                    </IonItem>
-                  </IonCol>
-                  <IonCol size="6" style={{ padding: '0 0 0 4px' }}>
-                    <IonItem className="compact-item">
-                      <IonLabel position="stacked">Email</IonLabel>
-                      <IonInput
-                        value={storeInfo.store_email}
-                        onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
-                        placeholder="Enter email address"
-                        type="email"
-                      />
-                    </IonItem>
-                  </IonCol>
-                </IonRow>
-              </IonGrid>
+              </div>
               
               <IonItem className="compact-item">
                 <IonLabel position="stacked">Store Image</IonLabel>
@@ -1336,6 +1857,7 @@ I'll automatically extract and save them for you!
                   )}
                 </div>
               </IonItem>
+
               <IonButton expand="block" onClick={saveStoreInfo} className="save-button">
                 <IonIcon icon={save} slot="start" />
                 Save Store Information
@@ -1802,6 +2324,223 @@ I'll automatically extract and save them for you!
             lng: storeInfo.longitude
           } : undefined}
         />
+
+        {/* Verification Blocker Modal */}
+        <IonModal 
+          isOpen={isStoreDataLoaded && !!storeInfo.storeId && storeInfo.verified === false} 
+          backdropDismiss={false}
+          className="verification-modal-centered"
+        >
+          <div style={{
+            position: 'relative',
+            width: '90%',
+            maxWidth: '400px',
+            maxHeight: '90vh',
+            margin: '5vh auto',
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{
+              padding: '32px 24px',
+              textAlign: 'center'
+            }}>
+            {/* Alert Icon */}
+            <div style={{
+              fontSize: '80px',
+              color: '#dc3545',
+              marginBottom: '20px',
+              animation: 'pulse 2s infinite'
+            }}>
+              <IonIcon 
+                icon={alertCircle} 
+                style={{ 
+                  fontSize: '80px',
+                  color: '#dc3545'
+                }} 
+              />
+            </div>
+
+            {/* Warning Message */}
+            <h2 style={{
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: '#333',
+              marginBottom: '16px',
+              lineHeight: '1.4'
+            }}>
+              Your store is not yet verified and will not be visible to shoppers
+            </h2>
+
+            <p style={{
+              fontSize: '14px',
+              color: '#666',
+              marginBottom: '24px'
+            }}>
+              Please proceed to your profile to upload the necessary documents to complete registration.
+            </p>
+
+            {/* Permit Input Fields */}
+            <div style={{ width: '100%', marginBottom: '20px' }}>
+              {/* BIR Permit Section */}
+              <IonItem style={{ marginBottom: '12px', '--background': 'transparent' }}>
+                <IonLabel position="stacked">BIR Permit Number</IonLabel>
+                <IonInput
+                  value={storeInfo.bir_permit || ''}
+                  onIonInput={(e) => setStoreInfo({...storeInfo, bir_permit: e.detail.value!})}
+                  placeholder="Enter BIR Permit number"
+                />
+              </IonItem>
+
+              {/* BIR Permit Image Upload */}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  fontSize: '14px', 
+                  fontWeight: '500', 
+                  marginBottom: '8px',
+                  color: '#495057'
+                }}>
+                  BIR Permit Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBirPermitImageSelect}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '8px',
+                    fontSize: '14px',
+                    marginBottom: '8px',
+                    border: '1px solid #ced4da',
+                    borderRadius: '4px',
+                    backgroundColor: 'white'
+                  }}
+                />
+                {birPermitImagePreview && (
+                  <div style={{ marginTop: '8px' }}>
+                    <img 
+                      src={birPermitImagePreview} 
+                      alt="BIR Permit Preview" 
+                      style={{ 
+                        width: '100%', 
+                        maxHeight: '200px', 
+                        objectFit: 'contain',
+                        borderRadius: '4px',
+                        border: '1px solid #dee2e6'
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedBirPermitImage && !isBirPermitUploading && (
+                  <IonButton 
+                    size="small"
+                    expand="block" 
+                    onClick={handleBirPermitImageUpload}
+                    style={{ marginTop: '8px' }}
+                  >
+                    Upload BIR Permit Image
+                  </IonButton>
+                )}
+                {isBirPermitUploading && (
+                  <div style={{ marginTop: '8px' }}>
+                    <IonProgressBar type="indeterminate"></IonProgressBar>
+                    <p style={{ textAlign: 'center', fontSize: '12px', marginTop: '4px' }}>Uploading...</p>
+                  </div>
+                )}
+              </div>
+
+              {/* DTI Permit Section */}
+              <IonItem style={{ marginBottom: '12px', '--background': 'transparent' }}>
+                <IonLabel position="stacked">DTI Permit Number</IonLabel>
+                <IonInput
+                  value={storeInfo.dti_permit || ''}
+                  onIonInput={(e) => setStoreInfo({...storeInfo, dti_permit: e.detail.value!})}
+                  placeholder="Enter DTI Permit number"
+                />
+              </IonItem>
+
+              {/* DTI Permit Image Upload */}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  fontSize: '14px', 
+                  fontWeight: '500', 
+                  marginBottom: '8px',
+                  color: '#495057'
+                }}>
+                  DTI Permit Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleDtiPermitImageSelect}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '8px',
+                    fontSize: '14px',
+                    marginBottom: '8px',
+                    border: '1px solid #ced4da',
+                    borderRadius: '4px',
+                    backgroundColor: 'white'
+                  }}
+                />
+                {dtiPermitImagePreview && (
+                  <div style={{ marginTop: '8px' }}>
+                    <img 
+                      src={dtiPermitImagePreview} 
+                      alt="DTI Permit Preview" 
+                      style={{ 
+                        width: '100%', 
+                        maxHeight: '200px', 
+                        objectFit: 'contain',
+                        borderRadius: '4px',
+                        border: '1px solid #dee2e6'
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedDtiPermitImage && !isDtiPermitUploading && (
+                  <IonButton 
+                    size="small"
+                    expand="block" 
+                    onClick={handleDtiPermitImageUpload}
+                    style={{ marginTop: '8px' }}
+                  >
+                    Upload DTI Permit Image
+                  </IonButton>
+                )}
+                {isDtiPermitUploading && (
+                  <div style={{ marginTop: '8px' }}>
+                    <IonProgressBar type="indeterminate"></IonProgressBar>
+                    <p style={{ textAlign: 'center', fontSize: '12px', marginTop: '4px' }}>Uploading...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Get Verified Button */}
+            <IonButton
+              expand="block"
+              onClick={handleSubmitVerification}
+              style={{
+                '--background': '#17a2b8',
+                '--background-hover': '#138496',
+                '--background-activated': '#117a8b',
+                fontWeight: 'bold',
+                fontSize: '16px'
+              }}
+            >
+              Get verified
+            </IonButton>
+            </div>
+          </div>
+        </IonModal>
 
         {/* Logout Button */}
         <div className="store-logout-section">

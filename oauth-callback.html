@@ -169,50 +169,57 @@
       // Add visual feedback
       document.getElementById('status').textContent = 'Redirecting to mobile app...';
       
-      if (code) {
-        console.log('Redirecting to deep link with code:', code);
-        const deepLinkUrl = `com.groceryshop.app://oauth-callback?code=${code}`;
-        
-        // Multiple attempts to trigger deep link
-        // Method 1: Direct window.location
+      // Get FULL hash or search params (Twitter uses hash, Facebook uses hash, etc.)
+      const fullParams = window.location.hash || window.location.search;
+      console.log('Full OAuth params to pass:', fullParams);
+      
+      const deepLinkUrl = `com.groceryshop.app://oauth-callback${fullParams}`;
+      console.log('Deep link URL:', deepLinkUrl);
+      
+      // Multiple attempts to trigger deep link
+      // Method 1: Direct window.location
+      try {
+        window.location.href = deepLinkUrl;
+        console.log('Method 1: window.location.href attempted');
+      } catch (e) {
+        console.log('Method 1 failed:', e);
+      }
+      
+      // Method 2: Create invisible iframe (works on some mobile browsers)
+      setTimeout(() => {
         try {
-          window.location.href = deepLinkUrl;
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = deepLinkUrl;
+          document.body.appendChild(iframe);
+          setTimeout(() => document.body.removeChild(iframe), 1000);
+          console.log('Method 2: iframe attempted');
         } catch (e) {
-          console.log('Method 1 failed:', e);
+          console.log('Method 2 failed:', e);
         }
-        
-        // Method 2: Create invisible iframe (works on some mobile browsers)
-        setTimeout(() => {
-          try {
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = deepLinkUrl;
-            document.body.appendChild(iframe);
-            setTimeout(() => document.body.removeChild(iframe), 1000);
-          } catch (e) {
-            console.log('Method 2 failed:', e);
-          }
-        }, 100);
-        
-        // Method 3: Create a link and programmatically click it
-        setTimeout(() => {
-          try {
-            const link = document.createElement('a');
-            link.href = deepLinkUrl;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            setTimeout(() => document.body.removeChild(link), 1000);
-          } catch (e) {
-            console.log('Method 3 failed:', e);
-          }
-        }, 200);
-        
-        // Method 4: Try window.open
-        setTimeout(() => {
-          try {
-            window.open(deepLinkUrl, '_system');
-          } catch (e) {
+      }, 100);
+      
+      // Method 3: Create a link and programmatically click it
+      setTimeout(() => {
+        try {
+          const link = document.createElement('a');
+          link.href = deepLinkUrl;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => document.body.removeChild(link), 1000);
+          console.log('Method 3: link click attempted');
+        } catch (e) {
+          console.log('Method 3 failed:', e);
+        }
+      }, 200);
+      
+      // Method 4: Try window.open
+      setTimeout(() => {
+        try {
+          window.open(deepLinkUrl, '_system');
+          console.log('Method 4: window.open attempted');
+        } catch (e) {
             console.log('Method 4 failed:', e);
           }
         }, 300);
@@ -243,9 +250,11 @@
             </div>`;
         }, 3000);
         
-      } else if (accessToken) {
-        console.log('Redirecting to deep link with access token');
-        const deepLinkUrl = `com.groceryshop.app://oauth-callback?access_token=${accessToken}`;
+      } else if (accessToken || window.location.hash || window.location.search) {
+        console.log('Redirecting to deep link with OAuth params');
+        const fullParams = window.location.hash || window.location.search;
+        const deepLinkUrl = `com.groceryshop.app://oauth-callback${fullParams}`;
+        console.log('Deep link URL (access_token path):', deepLinkUrl);
         
         // Multiple attempts to trigger deep link
         try {

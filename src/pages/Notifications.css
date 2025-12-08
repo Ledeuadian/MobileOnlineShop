@@ -1,0 +1,160 @@
+.notifications-container {
+  padding: 0;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* Filter Segment */
+.filter-segment {
+   margin: 16px auto;
+  max-width: 400px;
+  background: white;
+  border-radius: 24px;
+  padding: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-segment ion-segment-button {
+  --indicator-color: transparent;
+  --indicator-color-checked: transparent;
+  --color: #666666;
+  --color-checked: #ffffff;
+  --border-radius: 20px;
+  font-size: 0.9rem;
+  min-height: 32px;
+  font-weight: 600;
+  text-transform: none;
+  transition: all 0.3s ease;
+  margin: 0 2px;
+}
+
+.filter-segment ion-segment-button::part(indicator-background) {
+  display: none;
+}
+
+.filter-segment ion-segment-button::part(native) {
+  border-radius: 20px;
+  background: transparent;
+  transition: all 0.3s ease;
+}
+
+/* Filled rounded frame for checked state */
+.filter-segment ion-segment-button.segment-button-checked::part(native) {
+  background: #2d8f9c;
+  border-radius: 20px;
+}
+
+/* Force white text on checked state */
+.filter-segment ion-segment-button.segment-button-checked ion-label {
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.filter-segment ion-segment-button:not(.segment-button-checked) ion-label {
+  color: #666666;
+}
+
+/* Notifications List */
+.notifications-list {
+  padding: 0 16px;
+}
+
+.notification-item {
+  --background: white;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  --inner-padding-end: 0;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.notification-item.unread {
+  --background: #f0f8ff;
+  border-left: 4px solid #3880ff;
+}
+
+.notification-content {
+  width: 100%;
+  padding: 12px 0;
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.user-icon {
+  font-size: 1.5rem;
+  color: #666;
+}
+
+.customer-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000;
+}
+
+.notification-details {
+  margin-left: 32px;
+  margin-bottom: 8px;
+}
+
+.notification-details p {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+
+.order-info {
+  color: #7a5c3d;
+  font-weight: 500;
+}
+
+.payment-info {
+  color: #666;
+}
+
+.total-info {
+  font-weight: 700;
+  color: #000;
+  font-size: 0.95rem;
+}
+
+.notification-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: 32px;
+}
+
+.time-ago {
+  font-size: 0.85rem;
+  color: #999;
+}
+
+.chevron {
+  color: #999;
+  font-size: 1.2rem;
+  margin-left: 8px;
+}
+
+/* Empty and Loading States */
+.loading-message,
+.empty-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+  font-size: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 375px) {
+  .customer-name {
+    font-size: 0.95rem;
+  }
+  
+  .notification-details p {
+    font-size: 0.85rem;
+  }
+}

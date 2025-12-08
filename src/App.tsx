@@ -41,12 +41,21 @@ import PendingApproval from './pages/PendingApproval';
 // Lazy load heavy dashboard components
 const Home = React.lazy(() => import('./pages/Home'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
+const StoreVerification = React.lazy(() => import('./pages/StoreVerification'));
 const StoreDashboard = React.lazy(() => import('./pages/StoreDashboard'));
 const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
+const ItemDetails = React.lazy(() => import('./pages/ItemDetails'));
 const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
 const Cart = React.lazy(() => import('./pages/Cart'));
 const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
+const GroceryCheckout = React.lazy(() => import('./pages/GroceryCheckout'));
+const OrderConfirmation = React.lazy(() => import('./pages/OrderConfirmation'));
+const Notifications = React.lazy(() => import('./pages/Notifications'));
+const OrderDetails = React.lazy(() => import('./pages/OrderDetails'));
+const ClarificationDetails = React.lazy(() => import('./pages/ClarificationDetails'));
+const MyPurchases = React.lazy(() => import('./pages/MyPurchases'));
+const CustomerOrderDetails = React.lazy(() => import('./pages/CustomerOrderDetails'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
 const Checkout = React.lazy(() => import('./pages/Checkout'));
 const AddressSelection = React.lazy(() => import('./pages/AddressSelection'));
@@ -955,15 +964,31 @@ const App: React.FC = () => {
 
           // Check if this is an OAuth callback
           if (data.url.includes('oauth-callback')) {
-            console.log('OAuth callback detected from deep link');
-            // Navigate to OAuth callback route to handle the auth result
-            window.location.href = '/oauth-callback';
+            console.log('✅ OAuth callback detected from deep link');
+            console.log('Full deep link URL:', data.url);
+            
+            // Extract the full URL with all parameters
+            const url = new URL(data.url);
+            const params = url.hash || url.search; // OAuth params are usually in hash or search
+            
+            console.log('Navigating to /oauth-callback with params:', params);
+            
+            // Navigate preserving ALL parameters
+            window.location.href = '/oauth-callback' + params;
           }
           // Check if this is a verified/confirmation callback
           else if (data.url.includes('verified')) {
-            console.log('Email verification detected from deep link');
-            // Navigate to verified route to handle the confirmation
-            window.location.href = '/verified';
+            console.log('✅ Email verification detected from deep link');
+            console.log('Full deep link URL:', data.url);
+            
+            // Extract the full URL with all parameters
+            const url = new URL(data.url);
+            const params = url.hash || url.search;
+            
+            console.log('Navigating to /verified with params:', params);
+            
+            // Navigate preserving ALL parameters
+            window.location.href = '/verified' + params;
           }
           // Check if this is a password reset callback
           else if (data.url.includes('reset-password')) {
@@ -1165,6 +1190,27 @@ const App: React.FC = () => {
           <Route exact path="/grocery-store-results">
             <ProtectedGroceryStoreResultsRoute />
           </Route>
+          <Route exact path="/grocery-checkout">
+            <GroceryCheckout />
+          </Route>
+          <Route exact path="/order-confirmation">
+            <OrderConfirmation />
+          </Route>
+          <Route exact path="/notifications">
+            <Notifications />
+          </Route>
+          <Route exact path="/order-details/:orderId">
+            <OrderDetails />
+          </Route>
+          <Route exact path="/clarification-details/:id">
+            <ClarificationDetails />
+          </Route>
+          <Route exact path="/my-purchases">
+            <MyPurchases />
+          </Route>
+          <Route exact path="/customer-order-details/:orderId">
+            <CustomerOrderDetails />
+          </Route>
           <Route exact path="/verified">
             <AccountConfirmation />
           </Route>
@@ -1177,11 +1223,42 @@ const App: React.FC = () => {
           <Route exact path="/admin-dashboard">
             <ProtectedAdminRoute />
           </Route>
+          <Route exact path="/store-verification">
+            <React.Suspense fallback={
+              <IonPage>
+                <IonContent>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <IonSpinner name="crescent" />
+                  </div>
+                </IonContent>
+              </IonPage>
+            }>
+              <StoreVerification />
+            </React.Suspense>
+          </Route>
           <Route exact path="/store-dashboard">
             <ProtectedStoreRoute />
           </Route>
           <Route exact path="/dti-dashboard">
             <ProtectedDTIRoute />
+          </Route>
+          <Route exact path="/item-details/:storeItemId">
+            <React.Suspense fallback={
+              <IonPage>
+                <IonContent>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: '100%' 
+                  }}>
+                    <IonSpinner name="crescent" />
+                  </div>
+                </IonContent>
+              </IonPage>
+            }>
+              <ItemDetails />
+            </React.Suspense>
           </Route>
           <Route exact path="/nearby-users">
             <ProtectedNearbyUsersRoute />

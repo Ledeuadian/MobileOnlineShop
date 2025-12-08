@@ -31,6 +31,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.groceryshop.app" android:host="oauth-callback" />
             </intent-filter>
+
+            <!-- Deep link intent filter for email verification -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.groceryshop.app" android:host="verified" />
+            </intent-filter>
         </activity>
 
         <provider

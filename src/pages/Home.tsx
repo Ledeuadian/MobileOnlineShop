@@ -39,6 +39,7 @@ interface FeaturedProduct {
   availability: number;
   item_image_url?: string;
   storeId: number;
+  productTypeId?: number;
 }
 
 interface NearbyStore {
@@ -122,7 +123,8 @@ const Home: React.FC = () => {
             unit,
             availability,
             item_image_url,
-            storeId
+            storeId,
+            productTypeId
           `)
           .gt('availability', 0)
           .limit(8);
@@ -288,11 +290,19 @@ const Home: React.FC = () => {
   };
 
   // Modal functions
-  const openAddToCartModal = (product: FeaturedProduct) => {
-    setSelectedProduct(product);
-    setQuantity(1);
-    setSubtotal(product.price);
-    setIsModalOpen(true);
+  const openAddToGroceryListModal = (product: FeaturedProduct) => {
+    // Navigate directly to grocery list with the product
+    console.log('=== Adding product to grocery list ===');
+    console.log('Product:', product);
+    console.log('ProductTypeId:', product.productTypeId);
+    
+    if (product.productTypeId) {
+      history.push('/grocery-list', { 
+        addProductTypeId: product.productTypeId 
+      });
+    } else {
+      console.warn('Product has no productTypeId:', product);
+    }
   };
 
   const closeModal = () => {
@@ -585,18 +595,13 @@ const Home: React.FC = () => {
                       <IonIcon icon={star} color="warning" />
                       <span>4.{Math.floor(Math.random() * 5) + 5}</span>
                     </div>
-                    <p className="product-store">
-                      <IonIcon icon={locationOutline} />
-                      Store
-                    </p>
                     <div className="product-footer">
-                      <span className="product-price">₱{product.price}/{product.unit}</span>
                       <IonButton 
                         size="small" 
                         fill="solid" 
                         color="primary"
                         className="add-to-cart-btn"
-                        onClick={() => openAddToCartModal(product)}
+                        onClick={() => openAddToGroceryListModal(product)}
                       >
                         <IonIcon icon={cartOutline} slot="start" />
                         Add
