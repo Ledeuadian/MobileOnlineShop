@@ -27,52 +27,16 @@ const OAuthCallback: React.FC = () => {
     hasProviderToken: !!providerToken
   });
   
-  // DEBUG: Show what we detected
-  const debugInfo = {
-    hasAccessToken: !!accessToken,
-    hasRefreshToken: !!refreshToken,
-    type: type || 'none',
-    hasError: !!errorParam,
-    hasProviderToken: !!providerToken,
-    url: window.location.href,
-    decision: ''
-  };
-  
   // If this looks like email confirmation (no provider_token), redirect immediately using React Router
-  // OAuth provider logins (Facebook, Google) have provider_token, so they skip this
+  // OAuth provider logins (Facebook, Google, Twitter) have provider_token, so they skip this
   if (accessToken && refreshToken && !errorParam && !providerToken) {
     if (!type || type === 'signup' || type === 'email' || type === 'recovery') {
       console.log('✅ Email confirmation detected (no provider_token), redirecting to /verified');
-      debugInfo.decision = 'Email confirmation - redirecting to /verified';
-      
-      // TEMPORARY DEBUG: Show what we detected
-      return (
-        <IonContent className="ion-padding" style={{ padding: '20px' }}>
-          <h2 style={{ color: 'green' }}>✅ DEBUG - Email Confirmation Detected</h2>
-          <pre style={{ background: '#f5f5f5', padding: '10px', fontSize: '12px', overflow: 'auto' }}>
-            {JSON.stringify(debugInfo, null, 2)}
-          </pre>
-          <p>This will redirect to /verified (currently disabled for debugging)</p>
-        </IonContent>
-      );
+      return <Redirect to="/verified" />;
     }
   }
   
-  debugInfo.decision = 'OAuth provider login - should process normally';
-  console.log('⚠️ OAuth provider login or other flow, proceeding with normal OAuth processing');
-  
-  // TEMPORARY DEBUG: Show OAuth path
-  if (accessToken) {
-    return (
-      <IonContent className="ion-padding" style={{ padding: '20px' }}>
-        <h2 style={{ color: 'blue' }}>🔐 DEBUG - OAuth Provider Login</h2>
-        <pre style={{ background: '#f5f5f5', padding: '10px', fontSize: '12px', overflow: 'auto' }}>
-          {JSON.stringify(debugInfo, null, 2)}
-        </pre>
-        <p>Should process OAuth login (currently disabled for debugging)</p>
-      </IonContent>
-    );
-  }
+  console.log('⚠️ OAuth provider login detected, proceeding with normal OAuth processing');
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
