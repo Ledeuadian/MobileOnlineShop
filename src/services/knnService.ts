@@ -22,8 +22,10 @@ export interface StoreDistance {
 
 export class KNNService {
   /**
-   * Calculate distance between two points using Haversine formula
-   * Returns distance in kilometers
+   * Calculate distance between two points using Euclidean formula
+   * Returns distance in approximate kilometers
+   * Note: This is a simplified calculation that treats lat/lon as a flat plane.
+   * For more accurate geographic distances, use Haversine formula instead.
    */
   static calculateDistance(
     lat1: number, 
@@ -31,22 +33,15 @@ export class KNNService {
     lat2: number, 
     lon2: number
   ): number {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = this.toRadians(lat2 - lat1);
-    const dLon = this.toRadians(lon2 - lon1);
+    // Approximate conversion: 1 degree latitude ≈ 111 km
+    // 1 degree longitude varies by latitude, but we use 111 km as approximation
+    const kmPerDegree = 111;
     
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) * 
-      Math.cos(this.toRadians(lat2)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const dLat = (lat2 - lat1) * kmPerDegree;
+    const dLon = (lon2 - lon1) * kmPerDegree;
     
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  private static toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
+    // Euclidean distance formula: √((x2-x1)² + (y2-y1)²)
+    return Math.sqrt(dLat * dLat + dLon * dLon);
   }
 
   /**

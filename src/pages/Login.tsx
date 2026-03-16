@@ -10,7 +10,7 @@ const Login: React.FC = () => {
   const history = useHistory();
   React.useEffect(() => {
     if (localStorage.getItem('userEmail')) {
-      history.replace('/home');
+      history.replace('/grocery-list');
     }
   }, [history]);
   const [error, setError] = useState<string | null>(null);
@@ -72,8 +72,8 @@ const Login: React.FC = () => {
           // Store user - redirect to store dashboard
           history.replace('/store-dashboard');
         } else {
-          // Regular user or others - redirect to home
-          history.replace('/home');
+          // Regular user or others - redirect to grocery list
+          history.replace('/grocery-list');
         }
       }
     };
@@ -182,8 +182,8 @@ const Login: React.FC = () => {
                 // Store user - redirect to store dashboard
                 history.push('/store-dashboard');
               } else {
-                // Regular user or others - redirect to home
-                history.push({ pathname: '/home', state: { email } });
+                // Regular user or others - redirect to grocery list
+                history.push('/grocery-list');
               }
             } catch (err: unknown) {
               setError((err as Error).message || 'Login failed');
@@ -297,8 +297,8 @@ const Login: React.FC = () => {
 
                   let redirectTo: string;
                   if (isMobile) {
-                    // For mobile: use GitHub Pages URL that will redirect to custom scheme
-                    redirectTo = 'https://ledeuadian.github.io/MobileOnlineShop/oauth-callback.html';
+                    // For mobile: use direct deep link (same as Facebook)
+                    redirectTo = 'com.groceryshop.app://oauth-callback';
                   } else {
                     // For web development: use localhost
                     redirectTo = window.location.origin + '/oauth-callback';

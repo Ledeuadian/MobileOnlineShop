@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseService';
+import { createEWalletSource, waitForSourceChargeable, EWalletType } from '../services/paymongoService';
+import { Browser } from '@capacitor/browser';
 import {
   IonPage,
   IonHeader,
@@ -14,7 +16,9 @@ import {
   IonLabel,
   IonList,
   IonRadioGroup,
-  IonRadio
+  IonRadio,
+  IonLoading,
+  IonToast
 } from '@ionic/react';
 import { arrowBackOutline, chevronForwardOutline, chevronUpOutline, walletOutline } from 'ionicons/icons';
 import './GroceryCheckout.css';
@@ -45,6 +49,10 @@ const GroceryCheckout: React.FC = () => {
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cash');
   const [showEWalletOptions, setShowEWalletOptions] = useState(false);
   const [showItemBreakdown, setShowItemBreakdown] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('Processing...');
+  const [toastMessage, setToastMessage] = useState('');
+  const [showToast, setShowToast] = useState(false);
 
   const {
     storeName = 'Store',
@@ -187,13 +195,108 @@ const GroceryCheckout: React.FC = () => {
           orderId
         });
       } else {
-        // For e-wallet payments, handle differently
-        console.log('Processing e-wallet payment:', selectedPayment);
-        alert(`Processing ${selectedPayment} payment...`);
+        // E-wallet payment via PayMongo
+        await processEWalletPayment(
+          selectedPayment as EWalletType,
+          orderId,
+          orderNumber,
+          publicUserId,
+          customerName
+        );
       }
     } catch (error) {
       console.error('Error placing order:', error);
       alert('Error placing order. Please try again.');
+    }
+  };
+
+  const processEWalletPayment = async (
+    paymentType: EWalletType,
+    orderId: number,
+    orderNumber: string,
+    _userId: string,
+    _customerName: string,
+  ) => {
+    try {
+      setProcessingMessage('Creating payment link...');
+      setIsProcessing(true);
+
+      // 1. Create PayMongo source (public key, safe client-side)
+      const source = await createEWalletSource(paymentType, total, orderId, orderNumber);
+
+      // 2. Open GCash/Maya checkout in the in-app browser
+      setProcessingMessage(
+        `Waiting for ${paymentType === 'gcash' ? 'GCash' : 'Maya'} payment...`
+      );
+      await Browser.open({ url: source.checkoutUrl });
+
+      // 3. Poll PayMongo until source is chargeable (user pays) or times out
+      const result = await waitForSourceChargeable(
+        source.sourceId,
+        (status) => {
+          if (status === 'chargeable') setProcessingMessage('Payment received! Finalizing...');
+        },
+        5 * 60 * 1000
+      );
+
+      await Browser.close?.()?.catch(() => {});
+
+      if (result !== 'chargeable') {
+        setIsProcessing(false);
+        setToastMessage(
+          result === 'timeout'
+            ? 'Payment timed out. Please try again.'
+            : 'Payment was cancelled or failed.'
+        );
+        setShowToast(true);
+        // Revert order status to cancelled
+        await supabase.from('ORDERS').update({ status: 'cancelled' }).eq('orderId', orderId);
+        return;
+      }
+
+      // 4. Charge the source via Supabase Edge Function (uses secret key server-side)
+      setProcessingMessage('Finalizing payment...');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jugtklulvvpcpfsrdxom.supabase.co';
+      const chargeRes = await fetch(
+        `${supabaseUrl}/functions/v1/charge-paymongo-source`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: source.sourceId,
+            orderId,
+            amount: Math.round(total * 100), // centavos
+          }),
+        }
+      );
+
+      const chargeData = await chargeRes.json();
+      setIsProcessing(false);
+
+      if (!chargeData.success) {
+        setToastMessage(`Payment error: ${chargeData.error || 'Unknown error'}`);
+        setShowToast(true);
+        return;
+      }
+
+      // 5. Navigate to order confirmation
+      history.push('/order-confirmation', {
+        storeName,
+        storeLocation: 'Tubod, Iligan City',
+        paymentMethod: paymentType === 'gcash' ? 'GCash' : 'Maya',
+        itemsCount: availableItems,
+        totalItems,
+        total,
+        savings,
+        orderNumber,
+        orderId,
+      });
+
+    } catch (err) {
+      console.error('E-wallet payment error:', err);
+      setIsProcessing(false);
+      setToastMessage('An error occurred during payment. Please try again.');
+      setShowToast(true);
     }
   };
 
@@ -363,6 +466,19 @@ const GroceryCheckout: React.FC = () => {
           </IonButton>
         </div>
       </IonContent>
+
+      <IonLoading
+        isOpen={isProcessing}
+        message={processingMessage}
+        backdropDismiss={false}
+      />
+      <IonToast
+        isOpen={showToast}
+        message={toastMessage}
+        duration={4000}
+        color="danger"
+        onDidDismiss={() => setShowToast(false)}
+      />
     </IonPage>
   );
 };

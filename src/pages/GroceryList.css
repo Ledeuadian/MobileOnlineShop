@@ -32,6 +32,65 @@
   background: transparent;
 }
 
+/* Empty list message */
+.empty-list-message {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #999;
+  font-size: 0.95rem;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Popular items divider */
+.popular-items-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 2.5rem 0 2rem 0;
+  padding: 1rem 0.5rem;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: #ddd;
+}
+
+.divider-text {
+  color: #999;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-transform: lowercase;
+}
+
+/* Popular items list styling */
+.popular-items-list {
+  background: transparent;
+}
+
+.popular-items-list .grocery-item {
+  --background: #f9f9f9;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.popular-items-list .grocery-item:hover {
+  --background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.popular-items-list .item-name {
+  color: #555;
+  font-weight: 500;
+}
+
+.popular-items-list .item-info {
+  opacity: 0.85;
+}
+
 .grocery-item {
   --background: white;
   --border-radius: 12px;

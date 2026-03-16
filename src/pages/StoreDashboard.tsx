@@ -44,7 +44,10 @@ import {
   locationOutline,
   alertCircle,
   checkmarkCircle,
-  notificationsOutline
+  notificationsOutline,
+  cashOutline,
+  timeOutline,
+  checkmarkCircleOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import { LocationService } from '../services/locationService';
@@ -61,6 +64,7 @@ interface StoreInfo {
   store_address: string;
   store_phone: string;
   store_email: string;
+  gcash_number?: string;
   store_image_url: string;
   latitude?: number;
   longitude?: number;
@@ -106,6 +110,7 @@ const StoreDashboard: React.FC = () => {
     store_address: '',
     store_phone: '',
     store_email: '',
+    gcash_number: '',
     store_image_url: '',
     latitude: undefined,
     longitude: undefined,
@@ -160,6 +165,21 @@ const StoreDashboard: React.FC = () => {
   // Product Type Matching States
   const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
   const [selectedProductTypeId, setSelectedProductTypeId] = useState<number | null>(null);
+
+  // Earnings states
+  interface EarningRecord {
+    earningId: number;
+    orderId: number;
+    grossAmount: number;
+    platformFee: number;
+    netAmount: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+  }
+  const [earnings, setEarnings] = useState<EarningRecord[]>([]);
+  const [earningsLoading, setEarningsLoading] = useState(false);
+  const [earningsSummary, setEarningsSummary] = useState({ totalGross: 0, totalFees: 0, totalNet: 0, pendingNet: 0, disbursedNet: 0 });
   // Categories for items
   const categories = [
     'Fruits & Vegetables',
@@ -241,7 +261,7 @@ const StoreDashboard: React.FC = () => {
         // Map database column names to frontend field names
         const mappedData = {
           ...data,
-          store_address: data.location, // Map location to store_address
+          store_address: data.location ?? '', // Map location to store_address
           latitude: data.latitude,
           longitude: data.longitude
         };
@@ -333,7 +353,7 @@ const StoreDashboard: React.FC = () => {
 
   // Handle address geocoding
   const handleGeocodeAddress = async () => {
-    if (!storeInfo.store_address.trim()) {
+    if (!storeInfo.store_address?.trim()) {
       alert('Please enter an address first');
       return;
     }
@@ -503,6 +523,7 @@ I'll automatically extract and save them for you!
         location: storeInfo.store_address, // Map store_address to location
         store_phone: storeInfo.store_phone,
         store_email: storeInfo.store_email,
+        gcash_number: storeInfo.gcash_number,
         store_image_url: storeInfo.store_image_url,
         latitude: storeInfo.latitude,
         longitude: storeInfo.longitude,
@@ -529,7 +550,7 @@ I'll automatically extract and save them for you!
         // Map database column names back to frontend field names
         const mappedData = {
           ...result.data,
-          store_address: result.data.location, // Map location back to store_address
+          store_address: result.data.location ?? '', // Map location back to store_address
           latitude: result.data.latitude,
           longitude: result.data.longitude
         };
@@ -1237,6 +1258,125 @@ I'll automatically extract and save them for you!
   };
 
   // Mock data for sales report
+  const loadEarnings = async (storeId: number) => {
+    setEarningsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('STORE_EARNINGS')
+        .select('earningId, orderId, grossAmount, platformFee, netAmount, paymentMethod, status, createdAt')
+        .eq('storeId', storeId)
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+      const rows = data || [];
+      setEarnings(rows);
+      const summary = rows.reduce((acc, r) => ({
+        totalGross: acc.totalGross + Number(r.grossAmount),
+        totalFees: acc.totalFees + Number(r.platformFee),
+        totalNet: acc.totalNet + Number(r.netAmount),
+        pendingNet: acc.pendingNet + (r.status === 'pending' ? Number(r.netAmount) : 0),
+        disbursedNet: acc.disbursedNet + (r.status === 'disbursed' ? Number(r.netAmount) : 0),
+      }), { totalGross: 0, totalFees: 0, totalNet: 0, pendingNet: 0, disbursedNet: 0 });
+      setEarningsSummary(summary);
+    } catch (err) {
+      console.error('Error loading earnings:', err);
+    } finally {
+      setEarningsLoading(false);
+    }
+  };
+
+  const renderEarnings = () => (
+    <div style={{ padding: '16px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#333' }}>My Earnings</h2>
+
+      {/* Summary Cards */}
+      <IonGrid style={{ padding: 0, marginBottom: '16px' }}>
+        <IonRow>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#e8f5e9', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Pending Payout</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#2e7d32' }}>
+                ₱{earningsSummary.pendingNet.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#e3f2fd', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Total Disbursed</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1565c0' }}>
+                ₱{earningsSummary.disbursedNet.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+        </IonRow>
+        <IonRow>
+          <IonCol size="12" style={{ padding: '4px' }}>
+            <div style={{ background: '#f5f5f5', borderRadius: '12px', padding: '14px', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>₱{earningsSummary.totalGross.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div style={{ width: '1px', background: '#ddd' }} />
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', marginBottom: '4px' }}>Platform Fees (5%)</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#e53935' }}>-₱{earningsSummary.totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+          </IonCol>
+        </IonRow>
+      </IonGrid>
+
+      {/* Transactions List */}
+      <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+        <IonCardContent style={{ padding: 0 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#f9f9f9', display: 'flex' }}>
+            <div style={{ flex: 1, fontSize: '13px', fontWeight: '600', color: '#555' }}>Order / Date</div>
+            <div style={{ width: '90px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Net Earned</div>
+            <div style={{ width: '80px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Status</div>
+          </div>
+
+          {earningsLoading && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>Loading...</div>
+          )}
+          {!earningsLoading && earnings.length === 0 && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>
+              <IonIcon icon={cashOutline} style={{ fontSize: '40px', display: 'block', margin: '0 auto 8px' }} />
+              No earnings yet. Earnings appear after a GCash or Maya payment is completed.
+            </div>
+          )}
+          {!earningsLoading && earnings.map((e, idx) => (
+            <div key={e.earningId} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '12px 16px',
+              borderBottom: idx < earnings.length - 1 ? '1px solid #f0f0f0' : 'none',
+              background: idx % 2 === 0 ? '#fff' : '#fafafa'
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>Order #{e.orderId}</div>
+                <div style={{ fontSize: '12px', color: '#888' }}>
+                  {new Date(e.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  &nbsp;· {e.paymentMethod}
+                </div>
+              </div>
+              <div style={{ width: '90px', textAlign: 'right', fontWeight: 'bold', color: '#333', fontSize: '14px' }}>
+                ₱{Number(e.netAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ width: '80px', textAlign: 'right' }}>
+                <IonBadge color={e.status === 'disbursed' ? 'success' : 'warning'} style={{ fontSize: '11px' }}>
+                  {e.status === 'disbursed' ? 'Paid Out' : 'Pending'}
+                </IonBadge>
+              </div>
+            </div>
+          ))}
+        </IonCardContent>
+      </IonCard>
+
+      <p style={{ marginTop: '12px', fontSize: '12px', color: '#999', textAlign: 'center' }}>
+        Payouts are processed by the Admin. Contact support if your payout is overdue.
+      </p>
+    </div>
+  );
+
   const getMockSalesData = () => {
     const data = {
       week: {
@@ -1516,6 +1656,10 @@ I'll automatically extract and save them for you!
               <p>{storeInfo.store_email || 'Not set'}</p>
             </IonItem>
             <IonItem>
+              <IonLabel position="stacked">GCash Number (for payouts)</IonLabel>
+              <p>{storeInfo.gcash_number || 'Not set'}</p>
+            </IonItem>
+            <IonItem>
               <IonLabel position="stacked">Store Image</IonLabel>
               {storeInfo.store_image_url ? (
                 <div style={{ width: '100%', padding: '10px 0' }}>
@@ -1631,7 +1775,14 @@ I'll automatically extract and save them for you!
       <IonContent fullscreen>
         <IonSegment 
           value={selectedSegment} 
-          onIonChange={e => setSelectedSegment(e.detail.value as string)}
+          onIonChange={e => {
+            const val = e.detail.value as string;
+            setSelectedSegment(val);
+            if (val === 'earnings') {
+              const sid = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
+              if (sid) loadEarnings(sid);
+            }
+          }}
         >
           <IonSegmentButton value="dashboard">
             <IonLabel>Dashboard</IonLabel>
@@ -1645,11 +1796,16 @@ I'll automatically extract and save them for you!
             <IonLabel>Stock</IonLabel>
             <IonIcon icon={cube} />
           </IonSegmentButton>
+          <IonSegmentButton value="earnings">
+            <IonLabel>Earnings</IonLabel>
+            <IonIcon icon={cashOutline} />
+          </IonSegmentButton>
         </IonSegment>
 
         {selectedSegment === 'dashboard' && renderDashboard()}
         {selectedSegment === 'store' && renderStoreInfo()}
         {selectedSegment === 'stock' && renderStock()}
+        {selectedSegment === 'earnings' && renderEarnings()}
 
         {/* Store Info Modal */}
         <IonModal isOpen={isStoreModalOpen} onDidDismiss={() => setIsStoreModalOpen(false)}>
@@ -1743,7 +1899,7 @@ I'll automatically extract and save them for you!
                           size="small"
                           color="primary"
                           onClick={handleGeocodeAddress}
-                          disabled={isGeocodingAddress || !storeInfo.store_address.trim()}
+                          disabled={isGeocodingAddress || !storeInfo.store_address?.trim()}
                         >
                           <IonIcon icon={locationOutline} slot="start" />
                           {isGeocodingAddress ? 'Finding...' : 'Get Coordinates'}
@@ -1792,6 +1948,20 @@ I'll automatically extract and save them for you!
                           onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
                           placeholder="Enter email address"
                           type="email"
+                        />
+                      </IonItem>
+                    </IonCol>
+                  </IonRow>
+                  <IonRow>
+                    <IonCol size="12" style={{ padding: '4px 0 0 0' }}>
+                      <IonItem className="compact-item">
+                        <IonLabel position="stacked">GCash Number (for payouts)</IonLabel>
+                        <IonInput
+                          value={storeInfo.gcash_number}
+                          onIonInput={(e) => setStoreInfo({...storeInfo, gcash_number: e.detail.value!})}
+                          placeholder="e.g. 09171234567"
+                          inputMode="tel"
+                          maxlength={11}
                         />
                       </IonItem>
                     </IonCol>

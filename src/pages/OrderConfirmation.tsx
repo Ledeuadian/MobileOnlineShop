@@ -73,7 +73,7 @@ const OrderConfirmation: React.FC = () => {
   }, [orderId]);
 
   const handleGoHome = () => {
-    history.push('/tab1'); // Adjust to your home route
+    history.push('/grocery-list');
   };
 
   return (

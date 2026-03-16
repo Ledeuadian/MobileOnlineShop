@@ -39,6 +39,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.groceryshop.app" android:host="verified" />
             </intent-filter>
+
+            <!-- Deep link intent filter for PayMongo payment result -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.groceryshop.app" android:host="payment-result" />
+            </intent-filter>
         </activity>
 
         <provider

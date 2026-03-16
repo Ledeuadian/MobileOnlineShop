@@ -46,8 +46,8 @@ const StoreDashboard = React.lazy(() => import('./pages/StoreDashboard'));
 const DTIDashboard = React.lazy(() => import('./pages/DTIDashboard'));
 const ItemDetails = React.lazy(() => import('./pages/ItemDetails'));
 const CategoryProducts = React.lazy(() => import('./pages/CategoryProducts'));
-const Cart = React.lazy(() => import('./pages/Cart'));
-const GroceryList = React.lazy(() => import('./pages/GroceryList'));
+const Checkout = React.lazy(() => import('./pages/Checkout'));
+const AddressSelection = React.lazy(() => import('./pages/AddressSelection'));
 const GroceryStoreResults = React.lazy(() => import('./pages/GroceryStoreResults'));
 const GroceryCheckout = React.lazy(() => import('./pages/GroceryCheckout'));
 const OrderConfirmation = React.lazy(() => import('./pages/OrderConfirmation'));
@@ -57,11 +57,12 @@ const ClarificationDetails = React.lazy(() => import('./pages/ClarificationDetai
 const MyPurchases = React.lazy(() => import('./pages/MyPurchases'));
 const CustomerOrderDetails = React.lazy(() => import('./pages/CustomerOrderDetails'));
 const NearbyUsers = React.lazy(() => import('./pages/NearbyUsers'));
-const Checkout = React.lazy(() => import('./pages/Checkout'));
-const AddressSelection = React.lazy(() => import('./pages/AddressSelection'));
+const GroceryList = React.lazy(() => import('./pages/GroceryList'));
 const AddAddress = React.lazy(() => import('./pages/AddAddress'));
 import { supabase, checkUserApprovalStatus } from './services/supabaseService';
 import { LocationRequirementService } from './services/locationRequirementService';
+import { idleTimeout } from './services/idleTimeoutService';
+import IdleTimeoutWarning from './components/IdleTimeoutWarning';
 
 setupIonicReact();
 
@@ -102,8 +103,8 @@ const RedirectHandler: React.FC = () => {
             console.log('Redirecting to store dashboard');
             history.push('/store-dashboard');
           } else {
-            console.log('Redirecting to home');
-            history.push('/home');
+            console.log('Redirecting to grocery list');
+            history.push('/grocery-list');
           }
         } else {
           console.log('No authenticated user, redirecting to login');
@@ -594,72 +595,6 @@ const ProtectedCategoryRoute: React.FC = () => {
   ) : null;
 };
 
-const ProtectedCartRoute: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const history = useHistory();
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session?.user?.email) {
-          console.log('🔴 No session found, redirecting to login');
-          history.push('/login');
-          return;
-        }
-
-        console.log('🟢 Session found for Cart route:', session.user.email);
-        setIsAuthorized(true);
-      } catch (error) {
-        console.error('❌ Error checking cart authorization:', error);
-        history.push('/login');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, [history]);
-
-  if (isLoading) {
-    return (
-      <IonPage>
-        <IonContent>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            height: '100%' 
-          }}>
-            <IonSpinner name="crescent" />
-          </div>
-        </IonContent>
-      </IonPage>
-    );
-  }
-
-  return isAuthorized ? (
-    <React.Suspense fallback={
-      <IonPage>
-        <IonContent>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            height: '100%' 
-          }}>
-            <IonSpinner name="crescent" />
-          </div>
-        </IonContent>
-      </IonPage>
-    }>
-      <Cart />
-    </React.Suspense>
-  ) : null;
-};
-
 const ProtectedGroceryListRoute: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -918,6 +853,8 @@ const ProtectedAddAddressRoute: React.FC = () => {
 const App: React.FC = () => {
   const [isLocationReady, setIsLocationReady] = useState(false);
   const [isLocationChecking, setIsLocationChecking] = useState(true);
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [idleSecondsLeft, setIdleSecondsLeft] = useState(120);
 
   // Check location requirements on app start
   useEffect(() => {
@@ -939,7 +876,20 @@ const App: React.FC = () => {
     checkLocationRequirement();
   }, []);
 
-  // Global session monitoring
+  // Idle session timeout — signs out Admin/DTI/Store users after inactivity
+  useEffect(() => {
+    idleTimeout.start({
+      onWarn: (secondsLeft) => {
+        setIdleSecondsLeft(secondsLeft);
+        setShowIdleWarning(true);
+      },
+      onLogout: () => {
+        setShowIdleWarning(false);
+        window.location.href = '/login';
+      }
+    });
+    return () => idleTimeout.stop();
+  }, []);
   useEffect(() => {
     console.log('🔐 Initializing global session monitoring...');
     
@@ -993,8 +943,27 @@ const App: React.FC = () => {
           // Check if this is a password reset callback
           else if (data.url.includes('reset-password')) {
             console.log('Password reset detected from deep link');
-            // Navigate to reset password route
             window.location.href = '/reset-password';
+          }
+          // Handle PayMongo payment result deep link
+          else if (data.url.includes('payment-result')) {
+            console.log('Payment result deep link detected:', data.url);
+            try {
+              // Custom scheme: com.groceryshop.app://payment-result?status=success&orderId=123
+              // URL() parses host as 'payment-result' for custom schemes
+              const rawParams = data.url.split('?')[1] || '';
+              const params = new URLSearchParams(rawParams);
+              const status = params.get('status');
+              const orderId = params.get('orderId');
+              if (status === 'success' && orderId) {
+                window.location.href = `/order-confirmation?orderId=${orderId}&paid=true`;
+              } else {
+                window.location.href = '/grocery-checkout?paymentFailed=true';
+              }
+            } catch (error) {
+              console.error('Error parsing payment result deep link:', error);
+              window.location.href = '/grocery-list';
+            }
           }
           // Handle any other deep link paths
           else {
@@ -1172,9 +1141,6 @@ const App: React.FC = () => {
           <Route exact path="/category/:category">
             <ProtectedCategoryRoute />
           </Route>
-          <Route exact path="/cart">
-            <ProtectedCartRoute />
-          </Route>
           <Route exact path="/checkout">
             <ProtectedCheckoutRoute />
           </Route>
@@ -1265,6 +1231,18 @@ const App: React.FC = () => {
           </Route>
         </IonRouterOutlet>
       </IonReactRouter>
+
+      <IdleTimeoutWarning
+        isOpen={showIdleWarning}
+        secondsLeft={idleSecondsLeft}
+        onStay={() => setShowIdleWarning(false)}
+        onLogout={async () => {
+          setShowIdleWarning(false);
+          await supabase.auth.signOut();
+          localStorage.clear();
+          window.location.href = '/login';
+        }}
+      />
     </IonApp>
   );
 };

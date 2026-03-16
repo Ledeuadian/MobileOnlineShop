@@ -211,9 +211,9 @@ const CustomerOrderDetails: React.FC = () => {
                 <span className="step-label">Order<br/>Placed</span>
               </div>
               <div className={`status-line ${currentStep >= 1 ? 'active' : ''}`}></div>
-              <div className={`status-step ${currentStep >= 0 ? 'active' : ''}`}>
+              <div className={`status-step ${currentStep >= 1 ? 'active' : ''}`}>
                 <div className="step-circle">
-                  {currentStep >= 0 && <div className="step-fill"></div>}
+                  {currentStep >= 1 && <div className="step-fill"></div>}
                 </div>
                 <span className="step-label">Preparing</span>
               </div>
