@@ -22,26 +22,25 @@ export interface StoreDistance {
 
 export class KNNService {
   /**
-   * Calculate distance between two points using Euclidean formula
-   * Returns distance in approximate kilometers
-   * Note: This is a simplified calculation that treats lat/lon as a flat plane.
-   * For more accurate geographic distances, use Haversine formula instead.
+   * Calculate distance between two points using the Haversine formula.
+   * Returns distance in kilometers.
    */
   static calculateDistance(
-    lat1: number, 
-    lon1: number, 
-    lat2: number, 
+    lat1: number,
+    lon1: number,
+    lat2: number,
     lon2: number
   ): number {
-    // Approximate conversion: 1 degree latitude ≈ 111 km
-    // 1 degree longitude varies by latitude, but we use 111 km as approximation
-    const kmPerDegree = 111;
-    
-    const dLat = (lat2 - lat1) * kmPerDegree;
-    const dLon = (lon2 - lon1) * kmPerDegree;
-    
-    // Euclidean distance formula: √((x2-x1)² + (y2-y1)²)
-    return Math.sqrt(dLat * dLat + dLon * dLon);
+    const R = 6371; // Earth's radius in km
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   /**

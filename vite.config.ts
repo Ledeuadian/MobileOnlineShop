@@ -10,6 +10,10 @@ export default defineConfig({
     react(),
     legacy()
   ],
+  define: {
+    // Unique build stamp injected at compile time — used by the cache-busting logic in main.tsx
+    __APP_BUILD__: JSON.stringify(Date.now().toString())
+  },
   build: {
     rollupOptions: {
       output: {

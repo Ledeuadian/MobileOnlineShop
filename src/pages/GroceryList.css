@@ -225,6 +225,51 @@
   font-style: italic;
 }
 
+/* Quantity stepper */
+.quantity-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f0f4ff;
+  border-radius: 20px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+  margin-left: 0.75rem;
+}
+
+.qty-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #2196f3;
+  color: white;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.qty-btn:hover {
+  background: #1976d2;
+}
+
+.qty-btn:active {
+  transform: scale(0.9);
+}
+
+.qty-value {
+  min-width: 22px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #333;
+}
+
 /* Remove the old delete button styles */
 
 /* Progress indicator at bottom */

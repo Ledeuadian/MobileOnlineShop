@@ -64,6 +64,13 @@ const GroceryCheckout: React.FC = () => {
     savings = 0
   } = location.state || {};
 
+  // Recalculate total from items to always reflect quantity × price
+  const computedTotal = items.reduce(
+    (sum, item) => sum + (item.quantity || 1) * item.price,
+    0
+  );
+  const displayTotal = computedTotal || total;
+
   const handleBack = () => {
     history.goBack();
   };
@@ -111,7 +118,7 @@ const GroceryCheckout: React.FC = () => {
           orderNumber: orderNumber,
           status: 'pending',
           paymentMethod: selectedPayment === 'cash' ? 'Cash on Pickup' : selectedPayment.toUpperCase(),
-          total: total,
+          total: displayTotal,
           savings: savings,
           itemsCount: availableItems,
           totalItems: totalItems
@@ -189,7 +196,7 @@ const GroceryCheckout: React.FC = () => {
           paymentMethod: 'Cash on Pickup',
           itemsCount: availableItems,
           totalItems,
-          total,
+          total: displayTotal,
           savings,
           orderNumber,
           orderId
@@ -286,7 +293,7 @@ const GroceryCheckout: React.FC = () => {
         paymentMethod: paymentType === 'gcash' ? 'GCash' : 'Maya',
         itemsCount: availableItems,
         totalItems,
-        total,
+total: displayTotal,
         savings,
         orderNumber,
         orderId,
@@ -353,7 +360,7 @@ const GroceryCheckout: React.FC = () => {
                       <div className="item-details">
                         <div className="item-name">{item.name}</div>
                         <div className="item-quantity-price">
-                          {item.quantity || 1} x ₱{item.price.toFixed(2)}
+                          {item.quantity || 1} × ₱{item.price.toFixed(2)}
                         </div>
                       </div>
                       <div className="item-subtotal">
@@ -367,7 +374,7 @@ const GroceryCheckout: React.FC = () => {
             
             <div className="store-summary-total">
               <span className="total-label">TOTAL:</span>
-              <span className="total-amount">₱{total.toFixed(2)}</span>
+              <span className="total-amount">₱{displayTotal.toFixed(2)}</span>
             </div>
           </div>
 
@@ -453,7 +460,7 @@ const GroceryCheckout: React.FC = () => {
               Saved based on SRP: <span className="savings-amount">₱{savings.toFixed(2)}</span>
             </div>
             <div className="footer-total">
-              Total: <strong>₱{total.toFixed(2)}</strong>
+              Total: <strong>₱{displayTotal.toFixed(2)}</strong>
             </div>
           </div>
           <IonButton 

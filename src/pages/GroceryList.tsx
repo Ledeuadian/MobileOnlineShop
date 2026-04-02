@@ -33,7 +33,7 @@ interface GroceryItem {
   id: number;
   name: string;
   description?: string;
-  quantity?: string;
+  quantity: number;
   brand?: string;
   variant?: string;
   unit?: string;
@@ -142,6 +142,7 @@ const GroceryList: React.FC = () => {
           brand: item.Brand || undefined,
           variant: item.Variant || undefined,
           unit: item.Unit || undefined,
+          quantity: 1,
           checked: isAutoChecked || wasPreviouslyChecked
         };
       });
@@ -269,6 +270,17 @@ const GroceryList: React.FC = () => {
     );
   }).sort((a, b) => a.name.localeCompare(b.name));
 
+  const changeQuantity = (id: number, delta: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setGroceryItems(prevItems =>
+      prevItems.map(item =>
+        item.id === id
+          ? { ...item, quantity: Math.max(1, item.quantity + delta) }
+          : item
+      )
+    );
+  };
+
   const toggleItemCheck = (id: number) => {
     console.log('Toggling item with id:', id);
     setGroceryItems(prevItems => {
@@ -378,7 +390,7 @@ const GroceryList: React.FC = () => {
     
     console.log('Searching for stores with selected items:', selectedItems);
     
-    // Navigate to grocery store search results with selected items
+    // Navigate to grocery store search results with selected items (including quantities)
     history.push('/grocery-store-results', { selectedItems });
   };
 
@@ -453,6 +465,23 @@ const GroceryList: React.FC = () => {
                               <span className="item-brand">{item.brand}</span>
                               {item.variant && <span className="item-variant">{item.variant}</span>}
                             </div>
+                          </div>
+                          <div className="quantity-stepper" onClick={e => e.stopPropagation()}>
+                            <button
+                              className="qty-btn"
+                              onClick={(e) => changeQuantity(item.id, -1, e)}
+                              aria-label="Decrease quantity"
+                            >
+                              −
+                            </button>
+                            <span className="qty-value">{item.quantity}</span>
+                            <button
+                              className="qty-btn"
+                              onClick={(e) => changeQuantity(item.id, 1, e)}
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
                           </div>
                         </button>
                         <button 

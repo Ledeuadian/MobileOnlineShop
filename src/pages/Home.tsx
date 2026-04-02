@@ -50,8 +50,8 @@ interface NearbyStore {
   storeId: number;
   name: string;
   location: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   distance?: number;
   store_phone?: string;
   store_email?: string;
@@ -212,9 +212,9 @@ const Home: React.FC = () => {
           if (stores && !error) {
             const storesWithDefaults: NearbyStore[] = stores.map((store, index) => ({
               ...store,
-              rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+              rating: 4.0 + ((store.storeId * 13) % 10) / 10,
               estimatedDeliveryTime: `${15 + index * 5}-${20 + index * 5} min delivery`,
-              categories: getRandomCategories()
+              categories: getStableCategories(store.storeId)
             }));
             setNearbyStores(storesWithDefaults);
           }
@@ -256,9 +256,9 @@ const Home: React.FC = () => {
           .slice(0, 5)
           .map(store => ({
             ...store,
-            rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+            rating: 4.0 + ((store.storeId * 13) % 10) / 10,
             estimatedDeliveryTime: getEstimatedDeliveryTime(store.distance),
-            categories: getRandomCategories()
+            categories: getStableCategories(store.storeId)
           }));
 
         console.log('🎯 Found nearby stores:', nearestStores);
@@ -275,11 +275,9 @@ const Home: React.FC = () => {
         if (stores) {
           const fallbackStores: NearbyStore[] = stores.map((store, index) => ({
             ...store,
-            latitude: 0,
-            longitude: 0,
-            rating: 4.0 + Math.random() * 0.9,
+            rating: 4.0 + ((store.storeId * 13) % 10) / 10,
             estimatedDeliveryTime: `${20 + index * 5}-${25 + index * 5} min delivery`,
-            categories: getRandomCategories()
+            categories: getStableCategories(store.storeId)
           }));
           setNearbyStores(fallbackStores);
         }
@@ -288,15 +286,19 @@ const Home: React.FC = () => {
       }
     };
 
-    // Helper function to get random categories for stores
-    const getRandomCategories = (): string[] => {
+    // Deterministic categories seeded by storeId — stable across renders
+    const getStableCategories = (storeId: number): string[] => {
       const allCategories = [
-        'Fruits', 'Vegetables', 'Dairy', 'Meat', 'Seafood', 
+        'Fruits', 'Vegetables', 'Dairy', 'Meat', 'Seafood',
         'Bakery', 'Beverages', 'Snacks', 'Frozen', 'Pantry'
       ];
-      const count = Math.floor(Math.random() * 3) + 2; // 2-4 categories
-  const shuffled = [...allCategories].sort(() => 0.5 - Math.random());
-      return shuffled.slice(0, count);
+      const count = (storeId % 3) + 2; // 2-4 categories, stable per store
+      const start = storeId % allCategories.length;
+      const result: string[] = [];
+      for (let i = 0; i < count; i++) {
+        result.push(allCategories[(start + i) % allCategories.length]);
+      }
+      return result;
     };
 
     // Helper function to estimate delivery time based on distance

@@ -25,8 +25,7 @@ console.log('Supabase Key exists:', !!supabaseKey);
 console.log('Mobile environment detected:', isMobile());
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
-  alert('Configuration error: Missing database credentials');
+  console.error('Missing Supabase environment variables: app may not connect to the database.');
 }
 
 // Create client with mobile-aware configuration
