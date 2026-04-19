@@ -294,11 +294,21 @@ const GroceryStoreResults: React.FC = () => {
       let results = baseResults;
       try {
         console.log('Getting current location for KNN distance calculations...');
-        const userLocation = await LocationService.getCurrentPosition();
+        const userLocation = await LocationService.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0 // Always get fresh location
+        });
         
         if (userLocation) {
           console.log('Current user location:', userLocation);
-
+          console.log('Location accuracy:', userLocation.accuracy, 'meters');
+          
+          // Check if location accuracy is acceptable
+          if (userLocation.accuracy && !KNNService.isAccuracyAcceptable(userLocation.accuracy)) {
+            console.warn('⚠️ Location accuracy is poor (${userLocation.accuracy}m). Distance calculations may be inaccurate.');
+          }
+          
           // Build a lookup map of storeId -> real coordinates from already-fetched stores
           const storeLocationMap: { [storeId: number]: { latitude: number; longitude: number } } = {};
           stores?.forEach(store => {
@@ -313,15 +323,22 @@ const GroceryStoreResults: React.FC = () => {
             if (!storeCoords) {
               return { ...store, distance: undefined, distanceScore: 0 };
             }
-            const distance = KNNService.calculateDistance(
+            
+            // Calculate distance with confidence info
+            const distanceResult = KNNService.calculateDistanceWithConfidence(
               userLocation.latitude,
               userLocation.longitude,
               storeCoords.latitude,
-              storeCoords.longitude
+              storeCoords.longitude,
+              userLocation.accuracy
             );
+            
             const maxDistance = 50;
-            const distanceScore = Math.max(0, 100 - (distance / maxDistance) * 100);
-            return { ...store, distance, distanceScore };
+            const distanceScore = Math.max(0, 100 - (distanceResult.distance / maxDistance) * 100);
+            
+            console.log(`Store ${store.storeId}: ${KNNService.formatDistance(distanceResult.distance)} (confidence: ${distanceResult.confidence})`);
+            
+            return { ...store, distance: distanceResult.distance, distanceScore };
           });
 
           console.log('Results with real distance calculations:', results);
@@ -469,10 +486,7 @@ const GroceryStoreResults: React.FC = () => {
                                 {store.distance !== undefined && (
                                   <div className="store-distance" style={{ display: 'flex', alignItems: 'center', marginTop: '3px', color: '#2d6b6b', fontSize: '0.8rem', fontWeight: '600' }}>
                                     <span style={{ marginRight: '4px' }}>📍</span>
-                                    {store.distance < 1
-                                      ? `${Math.round(store.distance * 1000)} m away`
-                                      : `${store.distance.toFixed(1)} km away`
-                                    }
+                                    {KNNService.formatDistance(store.distance)}
                                   </div>
                                 )}
                               </div>

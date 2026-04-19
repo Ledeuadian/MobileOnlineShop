@@ -58,6 +58,7 @@ interface NearbyStore {
   rating?: number;
   estimatedDeliveryTime?: string;
   categories?: string[];
+  distanceConfidence?: 'high' | 'medium' | 'low';
 }
 
 const Home: React.FC = () => {
@@ -198,8 +199,12 @@ const Home: React.FC = () => {
         setLoadingStores(true);
         console.log('🏪 Loading nearby stores...');
 
-        // First, try to get user's location
-        const userLocation = await LocationService.getCurrentPosition();
+        // First, try to get user's location with high accuracy
+        const userLocation = await LocationService.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0 // Always get fresh location
+        });
         
         if (!userLocation) {
           console.warn('⚠️ Could not get user location, showing all stores');
@@ -221,6 +226,14 @@ const Home: React.FC = () => {
           return;
         }
 
+        console.log('📍 User location:', { lat: userLocation.latitude, lng: userLocation.longitude });
+        console.log('📍 Location accuracy:', userLocation.accuracy, 'meters');
+
+        // Check if location accuracy is acceptable
+        if (userLocation.accuracy && !KNNService.isAccuracyAcceptable(userLocation.accuracy)) {
+          console.warn('⚠️ Location accuracy is poor (' + userLocation.accuracy + 'm). Distance calculations may be inaccurate.');
+        }
+
         // Get stores with location data
         const { data: stores, error: storesError } = await supabase
           .from('GROCERY_STORE')
@@ -239,16 +252,32 @@ const Home: React.FC = () => {
           return;
         }
 
-        // Calculate distances using KNN service
-        const storesWithDistance = stores.map(store => ({
-          ...store,
-          distance: KNNService.calculateDistance(
+        // Calculate distances using KNN service with accuracy info
+        const storesWithDistance = stores.map(store => {
+          const distance = KNNService.calculateDistance(
             userLocation.latitude,
             userLocation.longitude,
             store.latitude,
             store.longitude
-          )
-        }));
+          );
+          return {
+            ...store,
+            distance,
+            distanceConfidence: userLocation.accuracy ? 
+              KNNService.calculateDistanceWithConfidence(
+                userLocation.latitude,
+                userLocation.longitude,
+                store.latitude,
+                store.longitude,
+                userLocation.accuracy
+              ).confidence : 'medium'
+          };
+        });
+
+        console.log('📏 Store distances calculated:');
+        storesWithDistance.forEach(store => {
+          console.log(`   ${store.name}: ${KNNService.formatDistance(store.distance)} (${store.distanceConfidence} confidence)`);
+        });
 
         // Sort by distance and take top 5
         const nearestStores = [...storesWithDistance]
@@ -301,13 +330,28 @@ const Home: React.FC = () => {
       return result;
     };
 
-    // Helper function to estimate delivery time based on distance
-    const getEstimatedDeliveryTime = (distance: number): string => {
-      const baseTime = 15;
-      const timePerKm = 5;
-      const minTime = baseTime + Math.floor(distance * timePerKm);
-      const maxTime = minTime + 10;
-      return `${minTime}-${maxTime} min delivery`;
+    // Helper function to estimate delivery time based on distance (realistic for Philippines)
+    // Accounts for traffic, road conditions, and local delivery patterns
+    const getEstimatedDeliveryTime = (distanceKm: number): string => {
+      if (distanceKm < 0.3) {
+        // Very close (<300m): 10-15 min
+        return '10-15 min';
+      } else if (distanceKm < 1) {
+        // Close (<1km): 15-20 min
+        return '15-20 min';
+      } else if (distanceKm < 3) {
+        // Within 3km: 20-30 min
+        return '20-30 min';
+      } else if (distanceKm < 5) {
+        // Within 5km: 30-45 min
+        return '30-45 min';
+      } else if (distanceKm < 10) {
+        // Within 10km: 45-60 min
+        return '45-60 min';
+      } else {
+        // Far (>10km): 60-90 min
+        return '60-90 min';
+      }
     };
 
     const loadCartCount = async () => {
@@ -772,7 +816,7 @@ const Home: React.FC = () => {
                       <p className="store-details">
                         <IonIcon icon={locationOutline} />
                         {store.distance ? 
-                          `${store.distance.toFixed(1)} km away • ${store.estimatedDeliveryTime}` :
+                          `${KNNService.formatDistance(store.distance)}${store.distanceConfidence === 'high' ? '' : ' ⚠️'} • ${store.estimatedDeliveryTime}` :
                           `${store.location} • ${store.estimatedDeliveryTime}`
                         }
                       </p>

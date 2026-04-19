@@ -11,9 +11,13 @@ export interface UserLocation {
 
 export class LocationService {
   /**
-   * Get current position using Capacitor Geolocation
+   * Get current position using Capacitor Geolocation with high accuracy
    */
-  static async getCurrentPosition(): Promise<UserLocation | null> {
+  static async getCurrentPosition(options?: { 
+    enableHighAccuracy?: boolean;
+    timeout?: number;
+    maximumAge?: number;
+  }): Promise<UserLocation | null> {
     try {
       // Request permissions first
       const permissions = await Geolocation.requestPermissions();
@@ -23,11 +27,15 @@ export class LocationService {
         return null;
       }
 
-      // Get current position
+      // Get current position with high accuracy settings
       const coordinates = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000
+        enableHighAccuracy: options?.enableHighAccuracy !== undefined ? options.enableHighAccuracy : true,
+        timeout: options?.timeout || 10000,
+        maximumAge: options?.maximumAge || 0 // Don't use cached positions by default
       });
+      
+      console.log('📍 Location accuracy:', coordinates.coords.accuracy, 'meters');
+      console.log('📍 Source:', coordinates.coords.altitudeAccuracy ? 'GPS' : 'Network');
       
       return {
         userId: '', // Will be set when saving
@@ -81,7 +89,12 @@ export class LocationService {
    * Watch position changes (for continuous location tracking)
    */
   static async watchPosition(
-    callback: (location: UserLocation | null) => void
+    callback: (location: UserLocation | null) => void,
+    options?: {
+      enableHighAccuracy?: boolean;
+      timeout?: number;
+      maximumAge?: number;
+    }
   ): Promise<string | null> {
     try {
       const permissions = await Geolocation.requestPermissions();
@@ -93,9 +106,9 @@ export class LocationService {
 
       const watchId = await Geolocation.watchPosition(
         {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 3600000 // 1 hour
+          enableHighAccuracy: options?.enableHighAccuracy !== undefined ? options.enableHighAccuracy : true,
+          timeout: options?.timeout || 10000,
+          maximumAge: options?.maximumAge || 60000 // 1 minute cache max (reduced from 1 hour)
         },
         (position, err) => {
           if (err) {
@@ -105,6 +118,7 @@ export class LocationService {
           }
 
           if (position) {
+            console.log('📍 Position update - Accuracy:', position.coords.accuracy, 'meters');
             callback({
               userId: '',
               latitude: position.coords.latitude,

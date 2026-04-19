@@ -144,12 +144,10 @@ const AdminDashboard: React.FC = () => {
         .eq('userTypeCode', 2)
         .eq('approval_status', 'approved');
 
-      // Get approved stores (userTypeCode = 3)
+      // Get active stores count from GROCERY_STORE table
       const { count: approvedStores } = await supabase
-        .from('USER')
-        .select('*', { count: 'exact', head: true })
-        .eq('userTypeCode', 3)
-        .eq('approval_status', 'approved');
+        .from('GROCERY_STORE')
+        .select('*', { count: 'exact', head: true });
 
       // Get pending store verifications (stores with permits but not verified)
       const { count: pendingStoreVerifications } = await supabase
@@ -216,43 +214,52 @@ const AdminDashboard: React.FC = () => {
   const fetchActiveStores = async () => {
     setLoadingUsers(true);
     try {
-      const { data, error } = await supabase
-        .from('USER')
-        .select(`
-          userId, 
-          email, 
-          firstname, 
-          lastname, 
-          userTypeCode, 
-          approval_status, 
-          created_at,
-          GROCERY_STORE!userId(
-            name,
-            location,
-            store_phone,
-            store_email
-          )
-        `)
-        .eq('userTypeCode', 3)
-        .eq('approval_status', 'approved')
+      console.log('Fetching active stores from GROCERY_STORE...');
+      
+      // Fetch directly from GROCERY_STORE table
+      const { data: stores, error: storesError } = await supabase
+        .from('GROCERY_STORE')
+        .select('storeId, name, location, store_phone, store_email, owner_id, created_at')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (storesError) throw storesError;
+      console.log('Store data from DB:', stores);
+
+      // If we need user info, fetch it based on owner_id
+      const ownerIds = stores?.map(s => s.owner_id).filter(Boolean) || [];
+      let usersMap: Record<string, any> = {};
       
-      // Transform the data to flatten the GROCERY_STORE fields
-      const transformedData = data?.map(user => ({
-        userId: user.userId,
-        email: user.email,
-        firstname: user.firstname,
-        lastname: user.lastname,
-        userTypeCode: user.userTypeCode,
-        approval_status: user.approval_status,
-        created_at: user.created_at,
-        store_name: user.GROCERY_STORE?.[0]?.name,
-        location: user.GROCERY_STORE?.[0]?.location,
-        store_phone: user.GROCERY_STORE?.[0]?.store_phone,
-        store_email: user.GROCERY_STORE?.[0]?.store_email
-      })) || [];
+      if (ownerIds.length > 0) {
+        const { data: users } = await supabase
+          .from('USER')
+          .select('userId, email, firstname, lastname, auth_user_id')
+          .in('auth_user_id', ownerIds);
+        
+        if (users) {
+          users.forEach(u => {
+            usersMap[u.auth_user_id] = u;
+          });
+        }
+      }
+
+      // Map store data
+      const transformedData = stores?.map(store => {
+        const user = usersMap[store.owner_id];
+        return {
+          userId: user?.userId || null,
+          email: user?.email || '',
+          firstname: user?.firstname || '',
+          lastname: user?.lastname || '',
+          userTypeCode: 3,
+          approval_status: 'approved',
+          storeId: store.storeId,
+          store_name: store.name || 'Store name not provided',
+          location: store.location || '',
+          store_phone: store.store_phone || '',
+          store_email: store.store_email || '',
+          created_at: store.created_at
+        };
+      }) || [];
 
       setUsersList(transformedData);
       setModalTitle('Active Stores');

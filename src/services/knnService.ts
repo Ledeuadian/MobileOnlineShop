@@ -21,9 +21,15 @@ export interface StoreDistance {
 }
 
 export class KNNService {
+  // Maximum acceptable accuracy threshold in meters (e.g., 500m is acceptable for nearby store finding)
+  static readonly MAX_ACCEPTABLE_ACCURACY_METERS = 500;
+
   /**
    * Calculate distance between two points using the Haversine formula.
-   * Returns distance in kilometers.
+   * Returns distance in kilometers with high precision.
+   * 
+   * Formula: d = 2 * R * arcsin(sqrt(sin²((lat2-lat1)/2) + cos(lat1) * cos(lat2) * sin²((lon2-lon1)/2)))
+   * Where R = Earth's radius (6371 km)
    */
   static calculateDistance(
     lat1: number,
@@ -31,16 +37,93 @@ export class KNNService {
     lat2: number,
     lon2: number
   ): number {
-    const R = 6371; // Earth's radius in km
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    // Earth's mean radius in kilometers (more accurate than using a fixed value)
+    const R = 6371.0088;
+    
+    // Convert degrees to radians with high precision
+    const toRad = (deg: number): number => (deg * Math.PI) / 180;
+    
+    // Calculate differences
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    // Convert both latitudes to radians once (optimization)
+    const lat1Rad = toRad(lat1);
+    const lat2Rad = toRad(lat2);
+    
+    // Haversine formula with proper trigonometric functions for better precision
+    const sinDLatHalf = Math.sin(dLat / 2);
+    const sinDLonHalf = Math.sin(dLon / 2);
+    
+    const a = 
+      sinDLatHalf * sinDLatHalf +
+      Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDLonHalf * sinDLonHalf;
+    
+    // Use atan2 for numerical stability
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    
+    // Calculate distance in kilometers
+    const distanceKm = R * c;
+    
+    // Return with 3 decimal places precision (sub-meter accuracy)
+    return Math.round(distanceKm * 1000) / 1000;
+  }
+
+  /**
+   * Calculate distance with confidence based on location accuracy
+   * Returns distance along with confidence level
+   */
+  static calculateDistanceWithConfidence(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+    userAccuracyMeters?: number
+  ): { distance: number; confidence: 'high' | 'medium' | 'low' } {
+    const distance = this.calculateDistance(lat1, lon1, lat2, lon2);
+    
+    // If we have accuracy info, calculate confidence
+    if (userAccuracyMeters !== undefined && userAccuracyMeters !== null) {
+      const distanceMeters = distance * 1000;
+      const accuracyRatio = userAccuracyMeters / distanceMeters;
+      
+      if (accuracyRatio < 0.5) {
+        return { distance, confidence: 'low' };
+      } else if (accuracyRatio < 1.0) {
+        return { distance, confidence: 'medium' };
+      } else {
+        return { distance, confidence: 'high' };
+      }
+    }
+    
+    // Default confidence if no accuracy info
+    return { distance, confidence: 'medium' };
+  }
+
+  /**
+   * Format distance for display with appropriate unit
+   */
+  static formatDistance(distanceKm: number): string {
+    if (distanceKm < 0.1) {
+      // Less than 100m - show in meters
+      return `${Math.round(distanceKm * 1000)} m`;
+    } else if (distanceKm < 1) {
+      // Less than 1km - show in meters with decimal
+      return `${Math.round(distanceKm * 1000)} m`;
+    } else if (distanceKm < 10) {
+      // Less than 10km - show with 1 decimal place
+      return `${distanceKm.toFixed(1)} km`;
+    } else {
+      // 10km or more - show with 0 decimal places
+      return `${Math.round(distanceKm)} km`;
+    }
+  }
+
+  /**
+   * Validate if location accuracy is acceptable for nearby store finding
+   */
+  static isAccuracyAcceptable(accuracyMeters: number): boolean {
+    return accuracyMeters <= this.MAX_ACCEPTABLE_ACCURACY_METERS;
   }
 
   /**

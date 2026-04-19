@@ -1433,20 +1433,22 @@ I'll automatically extract and save them for you!
             style={{ 
               '--background': '#f5f5f5',
               borderRadius: '25px',
-              padding: '4px'
+              padding: '2px',
+              display: 'flex',
+              overflow: 'hidden'
             }}
           >
-            <IonSegmentButton value="week" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Week</IonLabel>
+            <IonSegmentButton value="week" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Week</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="month" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Month</IonLabel>
+            <IonSegmentButton value="month" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Month</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="year" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Year</IonLabel>
+            <IonSegmentButton value="year" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Year</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="range" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Range</IonLabel>
+            <IonSegmentButton value="range" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '10px', minWidth: '0', margin: '0' }}>Range</IonLabel>
             </IonSegmentButton>
           </IonSegment>
         </div>

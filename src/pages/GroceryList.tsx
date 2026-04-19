@@ -79,46 +79,93 @@ const GroceryList: React.FC = () => {
     }
   };
 
-  // Function to fetch product types from database
+  // Function to fetch product types from database that are in store stock and order by most recently sold
   const fetchProductTypes = async (autoCheckProductTypeId?: number) => {
     try {
       setLoading(true);
-      console.log('Fetching product types from PRODUCT_TYPE table...');
+      console.log('Fetching product types from PRODUCT_TYPE table (only in stock, ordered by recent sales)...');
       
       // Load previously saved selections
       const savedSelections = loadSavedSelections();
       console.log('Loaded saved selections:', Array.from(savedSelections));
       
-      const { data, error } = await supabase
+      // Step 1: Get products that have items in ITEMS_IN_STORE (in stock in at least one store)
+      const { data: productsInStock, error: stockError } = await supabase
         .from('PRODUCT_TYPE')
         .select('productTypeId, Name, Brand, Variant, Unit')
         .order('Name', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching product types:', error);
-        // Fallback to empty array if there's an error
+      if (stockError) {
+        console.error('Error fetching product types:', stockError);
         setGroceryItems([]);
         return;
       }
 
-      console.log(`Fetched ${data?.length || 0} product types from database`);
-      console.log('Sample data:', data?.slice(0, 3));
-      console.log('All fetched items:', data?.map(d => d.Name));
+      // Step 2: Get productTypeIds that exist in ITEMS_IN_STORE (have stock)
+      const { data: itemsInStore, error: itemsError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('productTypeId');
 
-      // STRICT FILTER: Only include items that have ALL required fields from database
-      const validProducts = data?.filter(product => 
-        product.productTypeId && 
-        product.Name && 
-        product.Name.trim() !== ''
-      ) || [];
-
-      console.log(`Valid products after filtering: ${validProducts.length}`);
-      if (validProducts.length < (data?.length || 0)) {
-        console.warn(`Filtered out ${(data?.length || 0) - validProducts.length} invalid products`);
+      if (itemsError) {
+        console.error('Error fetching items in store:', itemsError);
       }
 
+      const productTypeIdsInStock = new Set(itemsInStore?.map(item => item.productTypeId) || []);
+      console.log(`Products in stock (in ITEMS_IN_STORE): ${productTypeIdsInStock.size}`);
+
+      // Step 3: Get sales data from ORDER_ITEMS joined with ORDERS to count recent sales
+      const { data: orderItemsData, error: orderError } = await supabase
+        .from('ORDER_ITEMS')
+        .select(`
+          storeItemId,
+          quantity,
+          createdAt,
+          ORDERS!inner(createdAt)
+        `);
+
+      if (orderError) {
+        console.warn('Could not fetch order items, proceeding without sales data:', orderError);
+      }
+
+      // Get store items to map storeItemId to productTypeId
+      const { data: storeItems, error: storeItemsError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('storeItemId, productTypeId');
+
+      if (storeItemsError) {
+        console.warn('Could not fetch store items for sales mapping:', storeItemsError);
+      }
+
+      // Create a map of storeItemId to productTypeId
+      const storeItemToProductType = new Map(storeItems?.map(item => [item.storeItemId, item.productTypeId]) || []);
+
+      // Count sales per productTypeId (most recent = higher count in recent orders)
+      const salesCountMap = new Map<number, number>();
+      if (orderItemsData) {
+        orderItemsData.forEach(orderItem => {
+          const productTypeId = storeItemToProductType.get(orderItem.storeItemId);
+          if (productTypeId) {
+            const currentCount = salesCountMap.get(productTypeId) || 0;
+            salesCountMap.set(productTypeId, currentCount + (orderItem.quantity || 1));
+          }
+        });
+      }
+
+      console.log('Sales count map (productTypeId -> total sold):', 
+        Array.from(salesCountMap.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v}`));
+
+      // Filter products to only include those in stock
+      const productsWithStock = productsInStock?.filter(product => 
+        product.productTypeId && 
+        product.Name && 
+        product.Name.trim() !== '' &&
+        productTypeIdsInStock.has(product.productTypeId)
+      ) || [];
+
+      console.log(`Products in stock after filtering: ${productsWithStock.length}`);
+
       // Remove duplicates based on Name, Brand, Variant, Unit combination
-      const uniqueProducts = validProducts.filter((product, index, self) => 
+      const uniqueProducts = productsWithStock.filter((product, index, self) => 
         index === self.findIndex(p => 
           p.Name === product.Name && 
           p.Brand === product.Brand && 
@@ -128,10 +175,27 @@ const GroceryList: React.FC = () => {
       );
 
       console.log(`After deduplication: ${uniqueProducts.length} unique products`);
-      console.log('Unique product names:', uniqueProducts.map(p => p.Name));
+
+      // Sort by sales count (most sold = highest count) in ASCENDING order as requested
+      // Products with more sales appear first (since they're more popular/recently sold)
+      const sortedProducts = uniqueProducts.sort((a, b) => {
+        const salesA = salesCountMap.get(a.productTypeId) || 0;
+        const salesB = salesCountMap.get(b.productTypeId) || 0;
+        // Sort by sales count descending (most sold first), then alphabetically
+        if (salesB !== salesA) {
+          return salesB - salesA;
+        }
+        return a.Name.localeCompare(b.Name);
+      });
+
+      console.log('Products sorted by sales (most sold first):', 
+        sortedProducts.slice(0, 5).map(p => ({
+          name: p.Name,
+          sales: salesCountMap.get(p.productTypeId) || 0
+        })));
 
       // Generate unique IDs for each item to avoid conflicts, but preserve productTypeId
-      const formattedItems: GroceryItem[] = uniqueProducts.map((item, index) => {
+      const formattedItems: GroceryItem[] = sortedProducts.map((item, index) => {
         const isAutoChecked = autoCheckProductTypeId && item.productTypeId === autoCheckProductTypeId;
         const wasPreviouslyChecked = savedSelections.has(item.productTypeId);
         
