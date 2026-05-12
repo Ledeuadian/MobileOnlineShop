@@ -617,17 +617,6 @@ const GroceryList: React.FC = () => {
           )}
         </div>
 
-        {/* Scroll Progress Indicator */}
-        {(filteredSelectedItems.length + filteredUnselectedItems.length) > 5 && (
-          <div className="grocery-progress">
-            <div 
-              className="progress-bar" 
-              style={{ 
-                width: `${Math.min(100, (filteredSelectedItems.length / Math.min((filteredSelectedItems.length + filteredUnselectedItems.length), 10)) * 100)}%`
-              }}
-            />
-          </div>
-        )}
 
         {/* Bottom Navigation Bar */}
         <div className="bottom-nav-bar">

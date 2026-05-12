@@ -141,7 +141,22 @@ const Home: React.FC = () => {
     
     const loadFeaturedProducts = async () => {
       try {
-        // Load limited products for featured section
+        // First get verified store IDs so we only show products from verified stores
+        const { data: verifiedStores } = await supabase
+          .from('GROCERY_STORE')
+          .select('storeId')
+          .eq('verified', true);
+
+        const verifiedStoreIds = verifiedStores?.map(s => s.storeId) || [];
+
+        if (verifiedStoreIds.length === 0) {
+          console.log('No verified stores found, hiding products');
+          setFeaturedProducts([]);
+          setAllProducts([]);
+          return;
+        }
+
+        // Load limited products for featured section (only from verified stores)
         const { data: featuredData, error: featuredError } = await supabase
           .from('ITEMS_IN_STORE')
           .select(`
@@ -158,6 +173,7 @@ const Home: React.FC = () => {
             brand
           `)
           .gt('availability', 0)
+          .in('storeId', verifiedStoreIds)
           .limit(8);
 
         if (featuredData && !featuredError) {
@@ -166,7 +182,7 @@ const Home: React.FC = () => {
           setFeaturedProducts(uniqueFeatured);
         }
 
-        // Load all products for search functionality
+        // Load all products for search functionality (only from verified stores)
         const { data: allData, error: allError } = await supabase
           .from('ITEMS_IN_STORE')
           .select(`
@@ -182,7 +198,8 @@ const Home: React.FC = () => {
             category,
             brand
           `)
-          .gt('availability', 0);
+          .gt('availability', 0)
+          .in('storeId', verifiedStoreIds);
 
         if (allData && !allError) {
           // Deduplicate products based on name, brand, unit, and description
@@ -212,6 +229,7 @@ const Home: React.FC = () => {
           const { data: stores, error } = await supabase
             .from('GROCERY_STORE')
             .select('storeId, name, location, latitude, longitude, store_phone, store_email')
+            .eq('verified', true)
             .limit(5);
 
           if (stores && !error) {
@@ -239,7 +257,8 @@ const Home: React.FC = () => {
           .from('GROCERY_STORE')
           .select('storeId, name, location, latitude, longitude, store_phone, store_email')
           .not('latitude', 'is', null)
-          .not('longitude', 'is', null);
+          .not('longitude', 'is', null)
+          .eq('verified', true);
 
         if (storesError) {
           console.error('Error fetching stores:', storesError);
@@ -299,6 +318,7 @@ const Home: React.FC = () => {
         const { data: stores } = await supabase
           .from('GROCERY_STORE')
           .select('storeId, name, location, store_phone, store_email')
+          .eq('verified', true)
           .limit(3);
 
         if (stores) {

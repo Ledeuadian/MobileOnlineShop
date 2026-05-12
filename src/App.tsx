@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Route, useHistory } from 'react-router-dom';
 import {
   IonApp,
@@ -6,8 +6,25 @@ import {
   IonSpinner,
   IonContent,
   IonPage,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButton,
+  IonButtons,
+  IonIcon,
+  IonToast,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonInput,
+  IonLabel,
+  IonItem,
+  IonText,
+  IonAlert,
   setupIonicReact
 } from '@ionic/react';
+import { documentTextOutline, logOutOutline, checkmarkCircleOutline, cameraOutline } from 'ionicons/icons';
 import { IonReactRouter } from '@ionic/react-router';
 import { App as CapacitorApp } from '@capacitor/app';
 
@@ -197,6 +214,306 @@ const ProtectedAdminRoute: React.FC = () => {
   ) : null;
 };
 
+// Verification Required Page - shown to unverified store owners
+const StoreVerificationRequired: React.FC = () => {
+  const history = useHistory();
+  const [birPermit, setBirPermit] = useState('');
+  const [dtiPermit, setDtiPermit] = useState('');
+  const [selectedBirImage, setSelectedBirImage] = useState<File | null>(null);
+  const [selectedDtiImage, setSelectedDtiImage] = useState<File | null>(null);
+  const [birImagePreview, setBirImagePreview] = useState<string | null>(null);
+  const [dtiImagePreview, setDtiImagePreview] = useState<string | null>(null);
+  const [isBirUploading, setIsBirUploading] = useState(false);
+  const [isDtiUploading, setIsDtiUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastColor, setToastColor] = useState<'success' | 'danger'>('success');
+  const [showSignOutAlert, setShowSignOutAlert] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
+  const birFileRef = useRef<HTMLInputElement>(null);
+  const dtiFileRef = useRef<HTMLInputElement>(null);
+  const [storeId, setStoreId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadStoreData = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data: storeData } = await supabase
+        .from('GROCERY_STORE')
+        .select('storeId, bir_permit, dti_permit, bir_permit_image, dti_permit_image')
+        .eq('owner_id', session.user.id)
+        .single();
+
+      if (storeData) {
+        setStoreId(storeData.storeId);
+        if (storeData.bir_permit) setBirPermit(storeData.bir_permit);
+        if (storeData.dti_permit) setDtiPermit(storeData.dti_permit);
+        // If permits are already submitted, show pending status
+        if (storeData.bir_permit && storeData.dti_permit && storeData.bir_permit_image && storeData.dti_permit_image) {
+          setPendingStatus(true);
+        }
+      }
+    };
+    loadStoreData();
+  }, []);
+
+  const handleBirImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setToastMessage('BIR permit image must be under 5MB.');
+        setToastColor('danger');
+        setShowToast(true);
+        return;
+      }
+      setSelectedBirImage(file);
+      setBirImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleDtiImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setToastMessage('DTI permit image must be under 5MB.');
+        setToastColor('danger');
+        setShowToast(true);
+        return;
+      }
+      setSelectedDtiImage(file);
+      setDtiImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadPermitImage = async (file: File, prefix: string): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${prefix}-${session.user.id}-${Date.now()}.${fileExt}`;
+    const { error } = await supabase.storage
+      .from('Images')
+      .upload(fileName, file, { cacheControl: '3600', upsert: true });
+    if (error) {
+      console.error(`Error uploading ${prefix} image:`, error);
+      return null;
+    }
+    const { data: urlData } = supabase.storage
+      .from('Images')
+      .getPublicUrl(fileName);
+    return urlData.publicUrl;
+  };
+
+  const handleSubmitVerification = async () => {
+    if (!birPermit.trim() || !dtiPermit.trim()) {
+      setToastMessage('Please enter both BIR and DTI permit numbers.');
+      setToastColor('danger');
+      setShowToast(true);
+      return;
+    }
+    if (!selectedBirImage || !selectedDtiImage) {
+      setToastMessage('Please upload both BIR and DTI permit images.');
+      setToastColor('danger');
+      setShowToast(true);
+      return;
+    }
+    if (!storeId) {
+      setToastMessage('Store not found. Please contact support.');
+      setToastColor('danger');
+      setShowToast(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const birImageUrl = await uploadPermitImage(selectedBirImage, 'bir-permit');
+      const dtiImageUrl = await uploadPermitImage(selectedDtiImage, 'dti-permit');
+
+      if (!birImageUrl || !dtiImageUrl) {
+        throw new Error('Failed to upload permit images');
+      }
+
+      const { error } = await supabase
+        .from('GROCERY_STORE')
+        .update({
+          bir_permit: birPermit.trim(),
+          dti_permit: dtiPermit.trim(),
+          bir_permit_image: birImageUrl,
+          dti_permit_image: dtiImageUrl,
+          verified: false
+        })
+        .eq('storeId', storeId);
+
+      if (error) throw error;
+
+      setPendingStatus(true);
+      setToastMessage('Verification request submitted! Please wait for admin approval.');
+      setToastColor('success');
+      setShowToast(true);
+    } catch (error) {
+      console.error('Error submitting verification:', error);
+      setToastMessage('Failed to submit verification. Please try again.');
+      setToastColor('danger');
+      setShowToast(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    history.push('/login');
+  };
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Store Verification Required</IonTitle>
+          <IonButtons slot="end">
+            <IonButton onClick={() => setShowSignOutAlert(true)}>
+              <IonIcon icon={logOutOutline} />
+            </IonButton>
+          </IonButtons>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding">
+        <div style={{ maxWidth: 600, margin: '0 auto', paddingTop: 20 }}>
+          <div style={{ textAlign: 'center', marginBottom: 30 }}>
+            <IonIcon icon={documentTextOutline} style={{ fontSize: 64, color: '#3880ff' }} />
+            <h2 style={{ marginTop: 16, marginBottom: 8 }}>Store Verification Required</h2>
+            <p style={{ color: '#666', fontSize: 14 }}>
+              Before accessing your store dashboard, you need to submit your BIR and DTI permits for verification.
+            </p>
+          </div>
+
+          {pendingStatus ? (
+            <IonCard>
+              <IonCardContent style={{ textAlign: 'center', padding: 30 }}>
+                <IonIcon icon={checkmarkCircleOutline} style={{ fontSize: 64, color: '#ffc107' }} />
+                <h3 style={{ marginTop: 16 }}>Verification Pending</h3>
+                <p style={{ color: '#666', marginTop: 8 }}>
+                  Your BIR and DTI permits have been submitted and are awaiting admin verification.
+                  You will be notified once your store is approved.
+                </p>
+                <IonButton expand="block" fill="outline" onClick={handleSignOut} style={{ marginTop: 20 }}>
+                  Sign Out
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          ) : (
+            <>
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle style={{ fontSize: 18 }}>BIR Permit</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <IonItem>
+                    <IonLabel position="floating">BIR Permit Number</IonLabel>
+                    <IonInput
+                      value={birPermit}
+                      onIonInput={(e) => setBirPermit(e.detail.value || '')}
+                      placeholder="Enter your BIR permit number"
+                    />
+                  </IonItem>
+                  <div style={{ marginTop: 12 }}>
+                    <IonLabel style={{ fontSize: 14, marginBottom: 8, display: 'block' }}>BIR Permit Image</IonLabel>
+                    <input
+                      ref={birFileRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleBirImageSelect}
+                    />
+                    <IonButton expand="block" fill="outline" onClick={() => birFileRef.current?.click()}>
+                      <IonIcon icon={cameraOutline} slot="start" />
+                      {selectedBirImage ? 'Change BIR Image' : 'Upload BIR Permit Image'}
+                    </IonButton>
+                    {birImagePreview && (
+                      <div style={{ marginTop: 8, textAlign: 'center' }}>
+                        <img src={birImagePreview} alt="BIR Permit" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
+                      </div>
+                    )}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle style={{ fontSize: 18 }}>DTI Permit</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <IonItem>
+                    <IonLabel position="floating">DTI Permit Number</IonLabel>
+                    <IonInput
+                      value={dtiPermit}
+                      onIonInput={(e) => setDtiPermit(e.detail.value || '')}
+                      placeholder="Enter your DTI permit number"
+                    />
+                  </IonItem>
+                  <div style={{ marginTop: 12 }}>
+                    <IonLabel style={{ fontSize: 14, marginBottom: 8, display: 'block' }}>DTI Permit Image</IonLabel>
+                    <input
+                      ref={dtiFileRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleDtiImageSelect}
+                    />
+                    <IonButton expand="block" fill="outline" onClick={() => dtiFileRef.current?.click()}>
+                      <IonIcon icon={cameraOutline} slot="start" />
+                      {selectedDtiImage ? 'Change DTI Image' : 'Upload DTI Permit Image'}
+                    </IonButton>
+                    {dtiImagePreview && (
+                      <div style={{ marginTop: 8, textAlign: 'center' }}>
+                        <img src={dtiImagePreview} alt="DTI Permit" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
+                      </div>
+                    )}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonButton
+                expand="block"
+                onClick={handleSubmitVerification}
+                disabled={isSubmitting}
+                style={{ marginTop: 16, marginBottom: 12 }}
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit for Verification'}
+              </IonButton>
+            </>
+          )}
+
+          <IonButton expand="block" fill="clear" color="medium" onClick={handleSignOut} style={{ marginTop: 8 }}>
+            <IonIcon icon={logOutOutline} slot="start" />
+            Sign Out
+          </IonButton>
+        </div>
+
+        <IonToast
+          isOpen={showToast}
+          onDidDismiss={() => setShowToast(false)}
+          message={toastMessage}
+          duration={3000}
+          color={toastColor}
+        />
+
+        <IonAlert
+          isOpen={showSignOutAlert}
+          onDidDismiss={() => setShowSignOutAlert(false)}
+          header="Sign Out"
+          message="Are you sure you want to sign out?"
+          buttons={[
+            { text: 'Cancel', role: 'cancel' },
+            { text: 'Sign Out', role: 'confirm', handler: handleSignOut }
+          ]}
+        />
+      </IonContent>
+    </IonPage>
+  );
+};
+
 const ProtectedStoreRoute: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -207,18 +524,19 @@ const ProtectedStoreRoute: React.FC = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
-        if (!session?.user?.email) {
+        if (!session?.user) {
           history.push('/login');
           return;
         }
 
         // Check user approval status
-        const approvalResult = await checkUserApprovalStatus(session.user.email);
+        const approvalResult = await checkUserApprovalStatus(session.user.email || '');
         
         if (approvalResult?.data && 
             approvalResult.data.userTypeCode === 3 && 
             approvalResult.data.approval_status === 'approved') {
           setIsAuthorized(true);
+          // Always show StoreDashboard - the modal inside handles unverified stores
         } else {
           history.push('/home');
         }
@@ -250,7 +568,10 @@ const ProtectedStoreRoute: React.FC = () => {
     );
   }
 
-  return isAuthorized ? (
+  if (!isAuthorized) return null;
+
+  // Always show StoreDashboard - the verification modal inside will handle unverified stores
+  return (
     <React.Suspense fallback={
       <IonPage>
         <IonContent>
@@ -267,7 +588,7 @@ const ProtectedStoreRoute: React.FC = () => {
     }>
       <StoreDashboard />
     </React.Suspense>
-  ) : null;
+  );
 };
 
 const ProtectedDTIRoute: React.FC = () => {

@@ -105,6 +105,35 @@ export async function checkUserApprovalStatus(email: string) {
   return { data };
 }
 
+// Check if a store is verified (bypass the store-dashboard restriction)
+export async function checkStoreVerified(authUserId: string): Promise<{ verified: boolean; hasStore: boolean; storeId?: number }> {
+  try {
+    const { data, error } = await supabase
+      .from('GROCERY_STORE')
+      .select('storeId, verified')
+      .eq('owner_id', authUserId)
+      .single();
+    
+    if (error) {
+      // No store found for this user
+      if (error.code === 'PGRST116') {
+        return { verified: false, hasStore: false };
+      }
+      console.error('Error checking store verification:', error.message);
+      return { verified: false, hasStore: false };
+    }
+    
+    return {
+      verified: data.verified || false,
+      hasStore: true,
+      storeId: data.storeId
+    };
+  } catch (error) {
+    console.error('Error in checkStoreVerified:', error);
+    return { verified: false, hasStore: false };
+  }
+}
+
 // Approve a user (set approval_status to 'approved')
 export async function approveUser(email: string) {
   const { data, error } = await supabase

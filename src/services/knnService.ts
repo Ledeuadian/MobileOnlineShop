@@ -51,7 +51,8 @@ export class KNNService {
     const lat1Rad = toRad(lat1);
     const lat2Rad = toRad(lat2);
     
-    // Haversine formula with proper trigonometric functions for better precision
+    // Haversine formula: sin²(dLat/2) + cos(lat1) * cos(lat2) * sin²(dLon/2)
+    // The dLat/dLon are already in radians, so dLat/2 = (lat2-lat1)/2 in radians = (lat2-lat1)*PI/360
     const sinDLatHalf = Math.sin(dLat / 2);
     const sinDLonHalf = Math.sin(dLon / 2);
     
@@ -59,11 +60,14 @@ export class KNNService {
       sinDLatHalf * sinDLatHalf +
       Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDLonHalf * sinDLonHalf;
     
-    // Use atan2 for numerical stability
+    // Use atan2 for numerical stability: 2 * arcsin(sqrt(a)) = 2 * atan2(sqrt(a), sqrt(1-a))
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     
     // Calculate distance in kilometers
     const distanceKm = R * c;
+    
+    // Debug log for troubleshooting coordinate order issues
+    console.debug(`📐 Distance calc: [${lat1.toFixed(6)}, ${lon1.toFixed(6)}] → [${lat2.toFixed(6)}, ${lon2.toFixed(6)}] = ${distanceKm.toFixed(3)} km`);
     
     // Return with 3 decimal places precision (sub-meter accuracy)
     return Math.round(distanceKm * 1000) / 1000;
