@@ -27,6 +27,8 @@ import {
   IonFooter
 } from '@ionic/react';
 import { star, heart, cartOutline, locationOutline, storefrontOutline, personOutline, add, remove, close } from 'ionicons/icons';
+import ProductSizeSelector, { ProductVariant } from '../components/ProductSizeSelector';
+import ProductVariantService from '../services/productVariantService';
 import ProfileMenu from '../components/ProfileMenu';
 import './Home.css';
 
@@ -40,20 +42,23 @@ interface FeaturedProduct {
   item_image_url?: string;
   storeId: number;
   productTypeId?: number;
+  category?: string;
+  brand?: string;
 }
 
 interface NearbyStore {
   storeId: number;
   name: string;
   location: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   distance?: number;
   store_phone?: string;
   store_email?: string;
   rating?: number;
   estimatedDeliveryTime?: string;
   categories?: string[];
+  distanceConfidence?: 'high' | 'medium' | 'low';
 }
 
 const Home: React.FC = () => {
@@ -61,6 +66,7 @@ const Home: React.FC = () => {
   const history = useHistory();
   const [searchText, setSearchText] = useState('');
   const [featuredProducts, setFeaturedProducts] = useState<FeaturedProduct[]>([]);
+  const [allProducts, setAllProducts] = useState<FeaturedProduct[]>([]);
   const [nearbyStores, setNearbyStores] = useState<NearbyStore[]>([]);
   const [loadingStores, setLoadingStores] = useState(true);
   
@@ -70,10 +76,16 @@ const Home: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [subtotal, setSubtotal] = useState(0);
   
+  // Size selector state
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(undefined);
+  const [loadingVariants, setLoadingVariants] = useState(false);
+  
   // Toast state
   const [showToast, setShowToast] = useState(false);
-  const [toastMessage] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const [cartItemCount, setCartItemCount] = useState(0);
+  const [showAllCategories, setShowAllCategories] = useState(false);
 
   // Helper function to validate URLs
   const isValidUrl = (string: string): boolean => {
@@ -83,6 +95,22 @@ const Home: React.FC = () => {
     } catch {
       return false;
     }
+  };
+
+  // Helper function to deduplicate products
+  const deduplicateProducts = (products: FeaturedProduct[]): FeaturedProduct[] => {
+    const seen = new Map<string, FeaturedProduct>();
+    
+    products.forEach(product => {
+      // Create unique key based on name, brand, unit, and description
+      const key = `${product.name}|${product.brand || ''}|${product.unit}|${product.description}`;
+      
+      if (!seen.has(key)) {
+        seen.set(key, product);
+      }
+    });
+    
+    return Array.from(seen.values());
   };
 
   useEffect(() => {
@@ -113,7 +141,23 @@ const Home: React.FC = () => {
     
     const loadFeaturedProducts = async () => {
       try {
-        const { data, error } = await supabase
+        // First get verified store IDs so we only show products from verified stores
+        const { data: verifiedStores } = await supabase
+          .from('GROCERY_STORE')
+          .select('storeId')
+          .eq('verified', true);
+
+        const verifiedStoreIds = verifiedStores?.map(s => s.storeId) || [];
+
+        if (verifiedStoreIds.length === 0) {
+          console.log('No verified stores found, hiding products');
+          setFeaturedProducts([]);
+          setAllProducts([]);
+          return;
+        }
+
+        // Load limited products for featured section (only from verified stores)
+        const { data: featuredData, error: featuredError } = await supabase
           .from('ITEMS_IN_STORE')
           .select(`
             storeItemId,
@@ -124,13 +168,43 @@ const Home: React.FC = () => {
             availability,
             item_image_url,
             storeId,
-            productTypeId
+            productTypeId,
+            category,
+            brand
           `)
           .gt('availability', 0)
+          .in('storeId', verifiedStoreIds)
           .limit(8);
 
-        if (data && !error) {
-          setFeaturedProducts(data as unknown as FeaturedProduct[]);
+        if (featuredData && !featuredError) {
+          // Deduplicate products based on name, brand, unit, and description
+          const uniqueFeatured = deduplicateProducts(featuredData as unknown as FeaturedProduct[]);
+          setFeaturedProducts(uniqueFeatured);
+        }
+
+        // Load all products for search functionality (only from verified stores)
+        const { data: allData, error: allError } = await supabase
+          .from('ITEMS_IN_STORE')
+          .select(`
+            storeItemId,
+            name,
+            description,
+            price,
+            unit,
+            availability,
+            item_image_url,
+            storeId,
+            productTypeId,
+            category,
+            brand
+          `)
+          .gt('availability', 0)
+          .in('storeId', verifiedStoreIds);
+
+        if (allData && !allError) {
+          // Deduplicate products based on name, brand, unit, and description
+          const uniqueAll = deduplicateProducts(allData as unknown as FeaturedProduct[]);
+          setAllProducts(uniqueAll);
         }
       } catch (error) {
         console.error('Error loading featured products:', error);
@@ -142,8 +216,12 @@ const Home: React.FC = () => {
         setLoadingStores(true);
         console.log('🏪 Loading nearby stores...');
 
-        // First, try to get user's location
-        const userLocation = await LocationService.getCurrentPosition();
+        // First, try to get user's location with high accuracy
+        const userLocation = await LocationService.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0 // Always get fresh location
+        });
         
         if (!userLocation) {
           console.warn('⚠️ Could not get user location, showing all stores');
@@ -151,18 +229,27 @@ const Home: React.FC = () => {
           const { data: stores, error } = await supabase
             .from('GROCERY_STORE')
             .select('storeId, name, location, latitude, longitude, store_phone, store_email')
+            .eq('verified', true)
             .limit(5);
 
           if (stores && !error) {
             const storesWithDefaults: NearbyStore[] = stores.map((store, index) => ({
               ...store,
-              rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+              rating: 4.0 + ((store.storeId * 13) % 10) / 10,
               estimatedDeliveryTime: `${15 + index * 5}-${20 + index * 5} min delivery`,
-              categories: getRandomCategories()
+              categories: getStableCategories(store.storeId)
             }));
             setNearbyStores(storesWithDefaults);
           }
           return;
+        }
+
+        console.log('📍 User location:', { lat: userLocation.latitude, lng: userLocation.longitude });
+        console.log('📍 Location accuracy:', userLocation.accuracy, 'meters');
+
+        // Check if location accuracy is acceptable
+        if (userLocation.accuracy && !KNNService.isAccuracyAcceptable(userLocation.accuracy)) {
+          console.warn('⚠️ Location accuracy is poor (' + userLocation.accuracy + 'm). Distance calculations may be inaccurate.');
         }
 
         // Get stores with location data
@@ -170,7 +257,8 @@ const Home: React.FC = () => {
           .from('GROCERY_STORE')
           .select('storeId, name, location, latitude, longitude, store_phone, store_email')
           .not('latitude', 'is', null)
-          .not('longitude', 'is', null);
+          .not('longitude', 'is', null)
+          .eq('verified', true);
 
         if (storesError) {
           console.error('Error fetching stores:', storesError);
@@ -183,16 +271,32 @@ const Home: React.FC = () => {
           return;
         }
 
-        // Calculate distances using KNN service
-        const storesWithDistance = stores.map(store => ({
-          ...store,
-          distance: KNNService.calculateDistance(
+        // Calculate distances using KNN service with accuracy info
+        const storesWithDistance = stores.map(store => {
+          const distance = KNNService.calculateDistance(
             userLocation.latitude,
             userLocation.longitude,
             store.latitude,
             store.longitude
-          )
-        }));
+          );
+          return {
+            ...store,
+            distance,
+            distanceConfidence: userLocation.accuracy ? 
+              KNNService.calculateDistanceWithConfidence(
+                userLocation.latitude,
+                userLocation.longitude,
+                store.latitude,
+                store.longitude,
+                userLocation.accuracy
+              ).confidence : 'medium'
+          };
+        });
+
+        console.log('📏 Store distances calculated:');
+        storesWithDistance.forEach(store => {
+          console.log(`   ${store.name}: ${KNNService.formatDistance(store.distance)} (${store.distanceConfidence} confidence)`);
+        });
 
         // Sort by distance and take top 5
         const nearestStores = [...storesWithDistance]
@@ -200,9 +304,9 @@ const Home: React.FC = () => {
           .slice(0, 5)
           .map(store => ({
             ...store,
-            rating: 4.0 + Math.random() * 0.9, // Random rating between 4.0-4.9
+            rating: 4.0 + ((store.storeId * 13) % 10) / 10,
             estimatedDeliveryTime: getEstimatedDeliveryTime(store.distance),
-            categories: getRandomCategories()
+            categories: getStableCategories(store.storeId)
           }));
 
         console.log('🎯 Found nearby stores:', nearestStores);
@@ -214,16 +318,15 @@ const Home: React.FC = () => {
         const { data: stores } = await supabase
           .from('GROCERY_STORE')
           .select('storeId, name, location, store_phone, store_email')
+          .eq('verified', true)
           .limit(3);
 
         if (stores) {
           const fallbackStores: NearbyStore[] = stores.map((store, index) => ({
             ...store,
-            latitude: 0,
-            longitude: 0,
-            rating: 4.0 + Math.random() * 0.9,
+            rating: 4.0 + ((store.storeId * 13) % 10) / 10,
             estimatedDeliveryTime: `${20 + index * 5}-${25 + index * 5} min delivery`,
-            categories: getRandomCategories()
+            categories: getStableCategories(store.storeId)
           }));
           setNearbyStores(fallbackStores);
         }
@@ -232,24 +335,43 @@ const Home: React.FC = () => {
       }
     };
 
-    // Helper function to get random categories for stores
-    const getRandomCategories = (): string[] => {
+    // Deterministic categories seeded by storeId — stable across renders
+    const getStableCategories = (storeId: number): string[] => {
       const allCategories = [
-        'Fruits', 'Vegetables', 'Dairy', 'Meat', 'Seafood', 
+        'Fruits', 'Vegetables', 'Dairy', 'Meat', 'Seafood',
         'Bakery', 'Beverages', 'Snacks', 'Frozen', 'Pantry'
       ];
-      const count = Math.floor(Math.random() * 3) + 2; // 2-4 categories
-  const shuffled = [...allCategories].sort(() => 0.5 - Math.random());
-      return shuffled.slice(0, count);
+      const count = (storeId % 3) + 2; // 2-4 categories, stable per store
+      const start = storeId % allCategories.length;
+      const result: string[] = [];
+      for (let i = 0; i < count; i++) {
+        result.push(allCategories[(start + i) % allCategories.length]);
+      }
+      return result;
     };
 
-    // Helper function to estimate delivery time based on distance
-    const getEstimatedDeliveryTime = (distance: number): string => {
-      const baseTime = 15;
-      const timePerKm = 5;
-      const minTime = baseTime + Math.floor(distance * timePerKm);
-      const maxTime = minTime + 10;
-      return `${minTime}-${maxTime} min delivery`;
+    // Helper function to estimate delivery time based on distance (realistic for Philippines)
+    // Accounts for traffic, road conditions, and local delivery patterns
+    const getEstimatedDeliveryTime = (distanceKm: number): string => {
+      if (distanceKm < 0.3) {
+        // Very close (<300m): 10-15 min
+        return '10-15 min';
+      } else if (distanceKm < 1) {
+        // Close (<1km): 15-20 min
+        return '15-20 min';
+      } else if (distanceKm < 3) {
+        // Within 3km: 20-30 min
+        return '20-30 min';
+      } else if (distanceKm < 5) {
+        // Within 5km: 30-45 min
+        return '30-45 min';
+      } else if (distanceKm < 10) {
+        // Within 10km: 45-60 min
+        return '45-60 min';
+      } else {
+        // Far (>10km): 60-90 min
+        return '60-90 min';
+      }
     };
 
     const loadCartCount = async () => {
@@ -276,32 +398,67 @@ const Home: React.FC = () => {
 
   // Categories based on exact database categories
   const categories = [
-    { id: 1, name: 'Fruits & Vegetables', icon: '🥬', color: '#4CAF50' },
-    { id: 2, name: 'Meat & Seafood', icon: '🥩', color: '#F44336' },
-    { id: 3, name: 'Dairy & Eggs', icon: '🥛', color: '#2196F3' },
-    { id: 4, name: 'Bakery', icon: '🍞', color: '#FF9800' },
-    { id: 5, name: 'Pantry', icon: '🏺', color: '#9C27B0' },
-    { id: 6, name: 'Beverages', icon: '🥤', color: '#00BCD4' }
+    { id: 1, name: 'Condiments', icon: '🧂', color: '#FFB74D' },
+    { id: 2, name: 'Fruits & Vegetables', icon: '🥬', color: '#4CAF50' },
+    { id: 3, name: 'Meat & Seafood', icon: '🥩', color: '#F44336' },
+    { id: 4, name: 'Dairy & Eggs', icon: '🥛', color: '#2196F3' },
+    { id: 5, name: 'Bakery', icon: '🍞', color: '#FF9800' },
+    { id: 6, name: 'Pantry', icon: '🏺', color: '#9C27B0' },
+    { id: 7, name: 'Beverages', icon: '🥤', color: '#00BCD4' },
+    { id: 8, name: 'Rice & Grains', icon: '🌾', color: '#8D6E63' },
+    { id: 9, name: 'Canned Goods', icon: '🥫', color: '#FF7043' },
+    { id: 10, name: 'Snacks', icon: '🍿', color: '#FFA726' },
+    { id: 11, name: 'Frozen Foods', icon: '🧊', color: '#42A5F5' },
+    { id: 12, name: 'Health & Wellness', icon: '💊', color: '#66BB6A' },
+    { id: 13, name: 'Household', icon: '🧹', color: '#78909C' }
   ];
+
+  const displayedCategories = showAllCategories ? categories : categories.slice(0, 6);
 
   const handleCategoryClick = (categoryName: string) => {
     console.log('Category clicked:', categoryName);
     history.push(`/category/${encodeURIComponent(categoryName)}`);
   };
 
+  // Filter products based on search text
+  const filteredProducts = searchText.trim()
+    ? allProducts.filter(product =>
+        product.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        product.description?.toLowerCase().includes(searchText.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchText.toLowerCase())
+      )
+    : featuredProducts;
+
   // Modal functions
-  const openAddToGroceryListModal = (product: FeaturedProduct) => {
-    // Navigate directly to grocery list with the product
-    console.log('=== Adding product to grocery list ===');
-    console.log('Product:', product);
-    console.log('ProductTypeId:', product.productTypeId);
+  const openAddToGroceryListModal = async (product: FeaturedProduct) => {
+    setSelectedProduct(product);
+    setQuantity(1);
+    setSubtotal(product.price);
+    setIsModalOpen(true);
     
-    if (product.productTypeId) {
-      history.push('/grocery-list', { 
-        addProductTypeId: product.productTypeId 
-      });
-    } else {
-      console.warn('Product has no productTypeId:', product);
+    // Load product variants
+    setLoadingVariants(true);
+    try {
+      // Use product name and brand to get variants
+      const productName = product.name;
+      const brand = product.brand || '';
+      
+      console.log('Loading variants for:', productName, 'Brand:', brand);
+      const variants = await ProductVariantService.getProductVariants(productName, brand);
+      console.log('Variants found:', variants);
+      setProductVariants(variants);
+      
+      // If variants found, set the current product as selected variant
+      if (variants.length > 0) {
+        // Find the variant that matches current product
+        const currentVariant = variants.find(v => v.unit === product.unit);
+        setSelectedVariant(currentVariant || variants[0]);
+      }
+    } catch (error) {
+      console.error('Error loading variants:', error);
+      setProductVariants([]);
+    } finally {
+      setLoadingVariants(false);
     }
   };
 
@@ -310,6 +467,30 @@ const Home: React.FC = () => {
     setSelectedProduct(null);
     setQuantity(1);
     setSubtotal(0);
+    setProductVariants([]);
+    setSelectedVariant(undefined);
+  };
+
+  const incrementQuantity = () => {
+    const price = selectedVariant?.price || selectedProduct?.price || 0;
+    const newQuantity = quantity + 1;
+    setQuantity(newQuantity);
+    setSubtotal(price * newQuantity);
+  };
+
+  const decrementQuantity = () => {
+    if (quantity > 1) {
+      const price = selectedVariant?.price || selectedProduct?.price || 0;
+      const newQuantity = quantity - 1;
+      setQuantity(newQuantity);
+      setSubtotal(price * newQuantity);
+    }
+  };
+
+  const handleVariantSelect = (variant: ProductVariant) => {
+    setSelectedVariant(variant);
+    const newSubtotal = (variant.price || 0) * quantity;
+    setSubtotal(newSubtotal);
   };
 
   const getCartItemCount = async () => {
@@ -368,27 +549,11 @@ const Home: React.FC = () => {
   };
 
   const navigateToCart = () => {
-    history.push('/cart');
+    history.push('/my-purchases');
   };
 
   const navigateToGroceryList = () => {
     history.push('/grocery-list');
-  };
-
-  const incrementQuantity = () => {
-    if (selectedProduct) {
-      const newQuantity = quantity + 1;
-      setQuantity(newQuantity);
-      setSubtotal(selectedProduct.price * newQuantity);
-    }
-  };
-
-  const decrementQuantity = () => {
-    if (selectedProduct && quantity > 1) {
-      const newQuantity = quantity - 1;
-      setQuantity(newQuantity);
-      setSubtotal(selectedProduct.price * newQuantity);
-    }
   };
 
   const confirmAddToCart = async () => {
@@ -533,7 +698,7 @@ const Home: React.FC = () => {
           <h3 className="section-title">Shop by Category</h3>
           <IonGrid>
             <IonRow>
-              {categories.map((category) => (
+              {displayedCategories.map((category) => (
                 <IonCol size="4" key={category.id}>
                   <button 
                     className="category-card" 
@@ -552,13 +717,43 @@ const Home: React.FC = () => {
               ))}
             </IonRow>
           </IonGrid>
+          {!showAllCategories && (
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <IonButton 
+                fill="clear" 
+                onClick={() => setShowAllCategories(true)}
+                style={{ fontSize: '14px', fontWeight: '600' }}
+              >
+                See More
+              </IonButton>
+            </div>
+          )}
+          {showAllCategories && (
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <IonButton 
+                fill="clear" 
+                onClick={() => setShowAllCategories(false)}
+                style={{ fontSize: '14px', fontWeight: '600' }}
+              >
+                Show less
+              </IonButton>
+            </div>
+          )}
         </div>
 
         {/* Featured Products */}
         <div className="section">
-          <h3 className="section-title">Featured Products</h3>
-          <div className="products-grid">
-            {featuredProducts.map((product) => (
+          <h3 className="section-title">
+            {searchText.trim() ? `Search Results (${filteredProducts.length})` : 'Featured Products'}
+          </h3>
+          {filteredProducts.length === 0 && searchText.trim() ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
+              <p style={{ fontSize: '18px', marginBottom: '10px' }}>No products found for "{searchText}"</p>
+              <p style={{ fontSize: '14px' }}>Try searching for something else</p>
+            </div>
+          ) : (
+            <div className="products-grid">
+              {filteredProducts.map((product) => (
               <IonCard key={product.storeItemId} className="product-card">
                 <div className="product-image">
                   {product.item_image_url && isValidUrl(product.item_image_url) ? (
@@ -591,6 +786,9 @@ const Home: React.FC = () => {
                 <IonCardContent>
                   <div className="product-info">
                     <h4 className="product-name">{product.name}</h4>
+                    {product.brand && (
+                      <p className="product-description" style={{ fontSize: '13px', color: '#666', margin: '4px 0' }}>{product.brand}</p>
+                    )}
                     <div className="product-rating">
                       <IonIcon icon={star} color="warning" />
                       <span>4.{Math.floor(Math.random() * 5) + 5}</span>
@@ -610,8 +808,9 @@ const Home: React.FC = () => {
                   </div>
                 </IonCardContent>
               </IonCard>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Nearby Stores */}
@@ -637,7 +836,7 @@ const Home: React.FC = () => {
                       <p className="store-details">
                         <IonIcon icon={locationOutline} />
                         {store.distance ? 
-                          `${store.distance.toFixed(1)} km away • ${store.estimatedDeliveryTime}` :
+                          `${KNNService.formatDistance(store.distance)}${store.distanceConfidence === 'high' ? '' : ' ⚠️'} • ${store.estimatedDeliveryTime}` :
                           `${store.location} • ${store.estimatedDeliveryTime}`
                         }
                       </p>
@@ -741,10 +940,34 @@ const Home: React.FC = () => {
                   <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                     <h2>{selectedProduct.name}</h2>
                     <p style={{ color: '#666' }}>{selectedProduct.description}</p>
-                    <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
-                      ₱{selectedProduct.price} per {selectedProduct.unit}
-                    </p>
+                    {selectedVariant ? (
+                      <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
+                        ₱{selectedVariant.price?.toFixed(2) || selectedProduct.price.toFixed(2)} per {selectedVariant.unit}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
+                        ₱{selectedProduct.price} per {selectedProduct.unit}
+                      </p>
+                    )}
                   </div>
+                  
+                  {/* Size Selector - Show if variants available */}
+                  {productVariants.length > 0 && !loadingVariants && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <ProductSizeSelector
+                        variants={productVariants}
+                        selectedVariant={selectedVariant}
+                        onVariantSelect={handleVariantSelect}
+                        showLabel={true}
+                      />
+                    </div>
+                  )}
+                  
+                  {loadingVariants && (
+                    <div style={{ textAlign: 'center', padding: '10px', color: '#666' }}>
+                      <IonSpinner name="dots" /> Loading sizes...
+                    </div>
+                  )}
                   
                   <IonItem lines="none">
                     <IonLabel>Quantity</IonLabel>

@@ -13,8 +13,10 @@ import {
   IonList,
   IonItem,
   IonBadge,
-  IonSpinner
+  IonSpinner,
+  IonMenuToggle
 } from '@ionic/react';
+import ProfileMenu from '../components/ProfileMenu';
 import { 
   arrowBackOutline, 
   cartOutline, 
@@ -31,7 +33,7 @@ interface GroceryItem {
   id: number;
   name: string;
   description?: string;
-  quantity?: string;
+  quantity: number;
   brand?: string;
   variant?: string;
   unit?: string;
@@ -77,46 +79,93 @@ const GroceryList: React.FC = () => {
     }
   };
 
-  // Function to fetch product types from database
+  // Function to fetch product types from database that are in store stock and order by most recently sold
   const fetchProductTypes = async (autoCheckProductTypeId?: number) => {
     try {
       setLoading(true);
-      console.log('Fetching product types from PRODUCT_TYPE table...');
+      console.log('Fetching product types from PRODUCT_TYPE table (only in stock, ordered by recent sales)...');
       
       // Load previously saved selections
       const savedSelections = loadSavedSelections();
       console.log('Loaded saved selections:', Array.from(savedSelections));
       
-      const { data, error } = await supabase
+      // Step 1: Get products that have items in ITEMS_IN_STORE (in stock in at least one store)
+      const { data: productsInStock, error: stockError } = await supabase
         .from('PRODUCT_TYPE')
         .select('productTypeId, Name, Brand, Variant, Unit')
         .order('Name', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching product types:', error);
-        // Fallback to empty array if there's an error
+      if (stockError) {
+        console.error('Error fetching product types:', stockError);
         setGroceryItems([]);
         return;
       }
 
-      console.log(`Fetched ${data?.length || 0} product types from database`);
-      console.log('Sample data:', data?.slice(0, 3));
-      console.log('All fetched items:', data?.map(d => d.Name));
+      // Step 2: Get productTypeIds that exist in ITEMS_IN_STORE (have stock)
+      const { data: itemsInStore, error: itemsError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('productTypeId');
 
-      // STRICT FILTER: Only include items that have ALL required fields from database
-      const validProducts = data?.filter(product => 
-        product.productTypeId && 
-        product.Name && 
-        product.Name.trim() !== ''
-      ) || [];
-
-      console.log(`Valid products after filtering: ${validProducts.length}`);
-      if (validProducts.length < (data?.length || 0)) {
-        console.warn(`Filtered out ${(data?.length || 0) - validProducts.length} invalid products`);
+      if (itemsError) {
+        console.error('Error fetching items in store:', itemsError);
       }
 
+      const productTypeIdsInStock = new Set(itemsInStore?.map(item => item.productTypeId) || []);
+      console.log(`Products in stock (in ITEMS_IN_STORE): ${productTypeIdsInStock.size}`);
+
+      // Step 3: Get sales data from ORDER_ITEMS joined with ORDERS to count recent sales
+      const { data: orderItemsData, error: orderError } = await supabase
+        .from('ORDER_ITEMS')
+        .select(`
+          storeItemId,
+          quantity,
+          createdAt,
+          ORDERS!inner(createdAt)
+        `);
+
+      if (orderError) {
+        console.warn('Could not fetch order items, proceeding without sales data:', orderError);
+      }
+
+      // Get store items to map storeItemId to productTypeId
+      const { data: storeItems, error: storeItemsError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('storeItemId, productTypeId');
+
+      if (storeItemsError) {
+        console.warn('Could not fetch store items for sales mapping:', storeItemsError);
+      }
+
+      // Create a map of storeItemId to productTypeId
+      const storeItemToProductType = new Map(storeItems?.map(item => [item.storeItemId, item.productTypeId]) || []);
+
+      // Count sales per productTypeId (most recent = higher count in recent orders)
+      const salesCountMap = new Map<number, number>();
+      if (orderItemsData) {
+        orderItemsData.forEach(orderItem => {
+          const productTypeId = storeItemToProductType.get(orderItem.storeItemId);
+          if (productTypeId) {
+            const currentCount = salesCountMap.get(productTypeId) || 0;
+            salesCountMap.set(productTypeId, currentCount + (orderItem.quantity || 1));
+          }
+        });
+      }
+
+      console.log('Sales count map (productTypeId -> total sold):', 
+        Array.from(salesCountMap.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v}`));
+
+      // Filter products to only include those in stock
+      const productsWithStock = productsInStock?.filter(product => 
+        product.productTypeId && 
+        product.Name && 
+        product.Name.trim() !== '' &&
+        productTypeIdsInStock.has(product.productTypeId)
+      ) || [];
+
+      console.log(`Products in stock after filtering: ${productsWithStock.length}`);
+
       // Remove duplicates based on Name, Brand, Variant, Unit combination
-      const uniqueProducts = validProducts.filter((product, index, self) => 
+      const uniqueProducts = productsWithStock.filter((product, index, self) => 
         index === self.findIndex(p => 
           p.Name === product.Name && 
           p.Brand === product.Brand && 
@@ -126,10 +175,27 @@ const GroceryList: React.FC = () => {
       );
 
       console.log(`After deduplication: ${uniqueProducts.length} unique products`);
-      console.log('Unique product names:', uniqueProducts.map(p => p.Name));
+
+      // Sort by sales count (most sold = highest count) in ASCENDING order as requested
+      // Products with more sales appear first (since they're more popular/recently sold)
+      const sortedProducts = uniqueProducts.sort((a, b) => {
+        const salesA = salesCountMap.get(a.productTypeId) || 0;
+        const salesB = salesCountMap.get(b.productTypeId) || 0;
+        // Sort by sales count descending (most sold first), then alphabetically
+        if (salesB !== salesA) {
+          return salesB - salesA;
+        }
+        return a.Name.localeCompare(b.Name);
+      });
+
+      console.log('Products sorted by sales (most sold first):', 
+        sortedProducts.slice(0, 5).map(p => ({
+          name: p.Name,
+          sales: salesCountMap.get(p.productTypeId) || 0
+        })));
 
       // Generate unique IDs for each item to avoid conflicts, but preserve productTypeId
-      const formattedItems: GroceryItem[] = uniqueProducts.map((item, index) => {
+      const formattedItems: GroceryItem[] = sortedProducts.map((item, index) => {
         const isAutoChecked = autoCheckProductTypeId && item.productTypeId === autoCheckProductTypeId;
         const wasPreviouslyChecked = savedSelections.has(item.productTypeId);
         
@@ -140,6 +206,7 @@ const GroceryList: React.FC = () => {
           brand: item.Brand || undefined,
           variant: item.Variant || undefined,
           unit: item.Unit || undefined,
+          quantity: 1,
           checked: isAutoChecked || wasPreviouslyChecked
         };
       });
@@ -242,30 +309,41 @@ const GroceryList: React.FC = () => {
     }
   };
 
-  const filteredItems = groceryItems.filter(item => {
-    // Always show checked items regardless of search
-    if (item.checked) {
-      return true;
-    }
-    
-    // For unchecked items, apply search filter
-    if (!searchText.trim()) {
-      return true; // Show all items when no search text
-    }
-    
+  // Separate selected and unselected items
+  const selectedItems = groceryItems.filter(item => item.checked);
+  const unselectedItems = groceryItems.filter(item => !item.checked);
+
+  // Apply search filter to both groups
+  const filteredSelectedItems = selectedItems.filter(item => {
+    if (!searchText.trim()) return true;
     return (
       item.name.toLowerCase().includes(searchText.toLowerCase()) ||
       item.brand?.toLowerCase().includes(searchText.toLowerCase()) ||
       item.variant?.toLowerCase().includes(searchText.toLowerCase()) ||
       item.unit?.toLowerCase().includes(searchText.toLowerCase())
     );
-  }).sort((a, b) => {
-    // Sort checked items to the top
-    if (a.checked && !b.checked) return -1;
-    if (!a.checked && b.checked) return 1;
-    // For items with same checked status, sort alphabetically by name
-    return a.name.localeCompare(b.name);
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  const filteredUnselectedItems = unselectedItems.filter(item => {
+    if (!searchText.trim()) return true;
+    return (
+      item.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.brand?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.variant?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.unit?.toLowerCase().includes(searchText.toLowerCase())
+    );
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  const changeQuantity = (id: number, delta: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setGroceryItems(prevItems =>
+      prevItems.map(item =>
+        item.id === id
+          ? { ...item, quantity: Math.max(1, item.quantity + delta) }
+          : item
+      )
+    );
+  };
 
   const toggleItemCheck = (id: number) => {
     console.log('Toggling item with id:', id);
@@ -357,16 +435,11 @@ const GroceryList: React.FC = () => {
   };
 
   const handleBackClick = () => {
-    history.goBack();
+    history.push('/grocery-list');
   };
 
   const navigateToCart = () => {
-    history.push('/cart');
-  };
-
-  const navigateToProfile = () => {
-    // TODO: Navigate to profile page when implemented
-    console.log('Profile navigation - to be implemented');
+    history.push('/my-purchases');
   };
 
   const handleSearchGrocery = () => {
@@ -381,7 +454,7 @@ const GroceryList: React.FC = () => {
     
     console.log('Searching for stores with selected items:', selectedItems);
     
-    // Navigate to grocery store search results with selected items
+    // Navigate to grocery store search results with selected items (including quantities)
     history.push('/grocery-store-results', { selectedItems });
   };
 
@@ -398,27 +471,17 @@ const GroceryList: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       
-      <IonContent>
+      <IonContent id="main-content">
         <div className="grocery-list-container">
           <div className="grocery-header">
             <h2>Grocery list</h2>
-            <p className="item-count">
-              {groceryItems.filter(item => item.checked).length === 0 
-                ? 'Tap items to add to your list' 
-                : `${groceryItems.filter(item => item.checked).length} items selected`
-              }
-            </p>
           </div>
 
           {/* Search Bar */}
           <IonSearchbar
             value={searchText}
             onIonInput={(e) => setSearchText(e.detail.value!)}
-            placeholder={
-              groceryItems.filter(item => item.checked).length > 0 
-                ? `Search grocery list (${groceryItems.filter(item => item.checked).length} selected)`
-                : "Search grocery list"
-            }
+            placeholder="Search grocery item"
             showClearButton="focus"
             className="grocery-search"
           />
@@ -438,52 +501,96 @@ const GroceryList: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Search info message */}
-              {searchText.trim() && groceryItems.filter(item => item.checked).length > 0 && (
-                <div style={{ 
-                  padding: '0.75rem 1rem', 
-                  margin: '0 1rem', 
-                  backgroundColor: '#e3f2fd', 
-                  borderRadius: '12px', 
-                  fontSize: '0.85rem', 
-                  color: '#1976d2',
-                  marginBottom: '0.75rem',
-                  border: '1px solid #bbdefb'
-                }}>
-                  📌 Your selected items ({groceryItems.filter(item => item.checked).length}) remain visible during search
+              {/* Selected Items Section (User's Grocery List) */}
+              {filteredSelectedItems.length > 0 && (
+                <IonList className="grocery-items-list">
+                  {filteredSelectedItems.map((item) => (
+                    <IonItem 
+                      key={item.id} 
+                      className="grocery-item selected"
+                      lines="none"
+                    >
+                      <div 
+                        className={`item-wrapper ${item.showingDelete ? 'swipe-left' : ''}`}
+                        onTouchStart={(e) => handleTouchStart(e, item.id)}
+                        onTouchMove={(e) => handleTouchMove(e, item.id)}
+                        onTouchEnd={() => handleTouchEnd(item.id)}
+                      >
+                        <button 
+                          className="item-content"
+                          onClick={() => toggleDeleteView(item.id)}
+                        >
+                          <div className="item-details">
+                            <h3 className="item-name">
+                              {item.name}
+                            </h3>
+                            <div className="item-info">
+                              <span className="item-size">{item.unit}</span>
+                              <span className="item-brand">{item.brand}</span>
+                              {item.variant && <span className="item-variant">{item.variant}</span>}
+                            </div>
+                          </div>
+                          <div className="quantity-stepper" onClick={e => e.stopPropagation()}>
+                            <button
+                              className="qty-btn"
+                              onClick={(e) => changeQuantity(item.id, -1, e)}
+                              aria-label="Decrease quantity"
+                            >
+                              −
+                            </button>
+                            <span className="qty-value">{item.quantity}</span>
+                            <button
+                              className="qty-btn"
+                              onClick={(e) => changeQuantity(item.id, 1, e)}
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </button>
+                        <button 
+                          className="delete-background" 
+                          onClick={(e) => deleteItem(item.id, e)}
+                        >
+                          <IonIcon icon={trashOutline} />
+                        </button>
+                      </div>
+                    </IonItem>
+                  ))}
+                </IonList>
+              )}
+
+              {/* Empty State for Selected Items */}
+              {filteredSelectedItems.length === 0 && !searchText.trim() && (
+                <div className="empty-list-message">
+                  Your grocery list is empty
                 </div>
               )}
-              
-              <IonList className="grocery-items-list">
-                {filteredItems.map((item) => (
+
+              {/* Divider with "Start with popular items" */}
+              {!searchText.trim() && (
+                <div className="popular-items-divider">
+                  <div className="divider-line"></div>
+                  <span className="divider-text">Start with popular items</span>
+                  <div className="divider-line"></div>
+                </div>
+              )}
+
+              {/* Unselected Items Section (Popular Items) */}
+              <IonList className="grocery-items-list popular-items-list">
+                {filteredUnselectedItems.map((item) => (
                   <IonItem 
                     key={item.id} 
-                    className={`grocery-item ${item.checked ? 'selected' : ''}`}
+                    className="grocery-item"
                     lines="none"
                   >
-                    <div 
-                      className={`item-wrapper ${item.showingDelete ? 'swipe-left' : ''}`}
-                      {...(item.checked ? {
-                        onTouchStart: (e) => handleTouchStart(e, item.id),
-                        onTouchMove: (e) => handleTouchMove(e, item.id),
-                        onTouchEnd: () => handleTouchEnd(item.id)
-                      } : {})}
-                    >
+                    <div className="item-wrapper">
                       <button 
                         className="item-content"
-                        onClick={() => {
-                          if (item.checked) {
-                            // If item is already selected, show delete option instead of deselecting
-                            toggleDeleteView(item.id);
-                          } else {
-                            // If item is not selected, select it
-                            toggleItemCheck(item.id);
-                          }
-                        }}
+                        onClick={() => toggleItemCheck(item.id)}
                       >
                         <div className="item-details">
                           <h3 className="item-name">
-                            {item.checked && <span className="selected-indicator">✓ </span>}
                             {item.name}
                           </h3>
                           <div className="item-info">
@@ -493,43 +600,23 @@ const GroceryList: React.FC = () => {
                           </div>
                         </div>
                       </button>
-                      <button 
-                        className="delete-background" 
-                        onClick={(e) => deleteItem(item.id, e)}
-                      >
-                        <IonIcon icon={trashOutline} />
-                      </button>
                     </div>
                   </IonItem>
                 ))}
-                {!loading && filteredItems.length === 0 && (
-                  <div className="empty-state">
-                    <IonIcon icon={searchOutline} className="empty-state-icon" />
-                    <h3>{searchText ? 'No items found' : 'No grocery items available'}</h3>
-                    <p>
-                      {searchText 
-                        ? 'Try searching with different keywords or check your spelling'
-                        : 'Start by searching for items to add to your grocery list'
-                      }
-                    </p>
-                  </div>
-                )}
               </IonList>
+
+              {/* No Results Message */}
+              {filteredSelectedItems.length === 0 && filteredUnselectedItems.length === 0 && searchText.trim() && (
+                <div className="empty-state">
+                  <IonIcon icon={searchOutline} className="empty-state-icon" />
+                  <h3>No items found</h3>
+                  <p>Try searching with different keywords or check your spelling</p>
+                </div>
+              )}
             </>
           )}
         </div>
 
-        {/* Scroll Progress Indicator */}
-        {filteredItems.length > 5 && (
-          <div className="grocery-progress">
-            <div 
-              className="progress-bar" 
-              style={{ 
-                width: `${Math.min(100, (groceryItems.filter(item => item.checked).length / Math.min(filteredItems.length, 10)) * 100)}%`
-              }}
-            />
-          </div>
-        )}
 
         {/* Bottom Navigation Bar */}
         <div className="bottom-nav-bar">
@@ -547,9 +634,11 @@ const GroceryList: React.FC = () => {
               </IonBadge>
             )}
           </button>
-          <button className="nav-btn" onClick={navigateToProfile}>
-            <IonIcon icon={personOutline} className="nav-icon" />
-          </button>
+          <IonMenuToggle menu="profile-menu">
+            <button className="nav-btn">
+              <IonIcon icon={personOutline} className="nav-icon" />
+            </button>
+          </IonMenuToggle>
         </div>
 
         {/* Search Grocery Button */}
@@ -576,6 +665,8 @@ const GroceryList: React.FC = () => {
         </div>
 
       </IonContent>
+
+      <ProfileMenu />
     </IonPage>
   );
 };

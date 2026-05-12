@@ -230,6 +230,105 @@ const Checkout: React.FC = () => {
 
   const storeGroups = groupItemsByStore();
 
+  const handlePlaceOrder = async () => {
+    if (!selectedAddress) {
+      alert('Please select a delivery address.');
+      return;
+    }
+    if (cartItems.length === 0) {
+      alert('Your cart is empty.');
+      return;
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Please log in to place an order.');
+        return;
+      }
+      const { data: userData } = await supabase
+        .from('USER')
+        .select('userId, firstname, lastname, email')
+        .eq('email', user.email)
+        .single();
+      if (!userData) {
+        alert('Error placing order. Please try again.');
+        return;
+      }
+      const customerName = (userData.firstname && userData.lastname)
+        ? `${userData.firstname} ${userData.lastname}`.trim()
+        : userData.email;
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+
+      for (const [storeId, storeGroup] of Object.entries(storeGroups)) {
+        const storeIdNum = Number(storeId);
+        const storeTotal = storeGroup.items.reduce((s, it) => s + (it.subTotal || 0), 0);
+        const storeSavings = calculateSavings(storeGroup.items);
+        const randomNum = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        const orderNumber = `ORD-${dateStr}-${randomNum}`;
+
+        const { data: orderData, error: orderError } = await supabase
+          .from('ORDERS')
+          .insert({
+            userId: userData.userId,
+            storeId: storeIdNum,
+            orderNumber,
+            status: 'pending',
+            paymentMethod: 'Cash on Pickup',
+            total: storeTotal,
+            savings: storeSavings,
+            itemsCount: storeGroup.items.length,
+            totalItems: storeGroup.items.length,
+          })
+          .select('orderId')
+          .single();
+
+        if (orderError || !orderData) {
+          console.error('Error creating order:', orderError);
+          continue;
+        }
+
+        const orderItems = storeGroup.items.map(it => ({
+          orderId: orderData.orderId,
+          storeItemId: it.storeItemId,
+          quantity: it.quantity,
+          price: it.ITEMS_IN_STORE?.price || 0,
+          subTotal: it.subTotal,
+        }));
+        await supabase.from('ORDER_ITEMS').insert(orderItems);
+
+        // Notify store owner
+        const { data: storeData } = await supabase
+          .from('GROCERY_STORE')
+          .select('owner_id')
+          .eq('storeId', storeIdNum)
+          .single();
+        if (storeData?.owner_id) {
+          const { data: ownerData } = await supabase
+            .from('USER')
+            .select('userId')
+            .eq('auth_user_id', storeData.owner_id)
+            .single();
+          if (ownerData) {
+            await supabase.from('NOTIFICATIONS').insert({
+              userId: ownerData.userId,
+              orderId: orderData.orderId,
+              customerName,
+              orderNumber,
+              paymentMethod: 'Cash on Pickup',
+              total: storeTotal,
+              status: 'pending',
+            });
+          }
+        }
+      }
+      history.push('/my-purchases');
+    } catch (error) {
+      console.error('Error placing order:', error);
+      alert('Error placing order. Please try again.');
+    }
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -344,7 +443,7 @@ const Checkout: React.FC = () => {
           </IonCardContent>
         </IonCard>
 
-        <IonButton expand="block" color="primary" style={{ marginTop: 16 }}>
+        <IonButton expand="block" color="primary" style={{ marginTop: 16 }} onClick={handlePlaceOrder}>
           Place Order
         </IonButton>
       </IonContent>

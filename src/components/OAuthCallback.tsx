@@ -135,8 +135,24 @@ const OAuthCallback: React.FC = () => {
           
           if (setSessionError) {
             console.error('Error setting session with tokens:', setSessionError);
-            setError('Failed to establish session with OAuth tokens');
+            
+            // Handle specific Twitter email error
+            if (setSessionError.message?.includes('email') || 
+                setSessionError.message?.includes('external provider')) {
+              setError(
+                'Twitter login requires email access. Please ensure you\'ve granted email permission, ' +
+                'or use Facebook/Google login instead.'
+              );
+            } else {
+              setError(`OAuth error: ${setSessionError.message || 'Failed to complete authentication'}`);
+            }
+            
             setLoading(false);
+            
+            // Redirect back to login after showing error
+            setTimeout(() => {
+              history.replace('/login');
+            }, 5000);
             return;
           }
           
@@ -258,9 +274,9 @@ const OAuthCallback: React.FC = () => {
               console.log('🔄 Redirecting to store dashboard');
               history.replace('/store-dashboard');
             } else {
-              // Regular user or others - redirect to home
-              console.log('🔄 Redirecting to home');
-              history.replace('/home');
+              // Regular user or others - redirect to grocery list
+              console.log('🔄 Redirecting to grocery list');
+              history.replace('/grocery-list');
             }
           } else {
             console.error('Unable to retrieve user email from OAuth session');

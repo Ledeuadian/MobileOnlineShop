@@ -44,8 +44,8 @@ interface Clarification {
 }
 
 interface ItemDetails {
-  itemName: string;
-  productPrice: number;
+  name: string;
+  price: number;
 }
 
 const ClarificationDetails: React.FC = () => {
@@ -113,7 +113,7 @@ const ClarificationDetails: React.FC = () => {
       if (clarificationData.itemId) {
         const { data: itemData } = await supabase
           .from('ITEMS_IN_STORE')
-          .select('itemName, productPrice')
+          .select('name, price')
           .eq('storeItemId', clarificationData.itemId)
           .single();
 
@@ -390,11 +390,11 @@ const ClarificationDetails: React.FC = () => {
               <IonCardContent>
                 <div className="product-detail-row">
                   <span className="detail-label">Product Name:</span>
-                  <span className="detail-value">{itemDetails.itemName}</span>
+                  <span className="detail-value">{itemDetails.name}</span>
                 </div>
                 <div className="product-detail-row">
                   <span className="detail-label">Current Price:</span>
-                  <span className="detail-value price">₱{itemDetails.productPrice.toFixed(2)}</span>
+                  <span className="detail-value price">₱{itemDetails.price.toFixed(2)}</span>
                 </div>
               </IonCardContent>
             </IonCard>

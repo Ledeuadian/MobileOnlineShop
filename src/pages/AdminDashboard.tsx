@@ -22,7 +22,8 @@ import {
   IonList,
   IonItem,
   IonText,
-  IonButtons
+  IonButtons,
+  IonToast
 } from '@ionic/react';
 import {
   statsChartOutline,
@@ -34,7 +35,8 @@ import {
   logOutOutline,
   closeOutline,
   chevronDownOutline,
-  chevronUpOutline
+  chevronUpOutline,
+  cashOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import { useHistory } from 'react-router-dom';
@@ -74,6 +76,27 @@ const AdminDashboard: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
   const [email, setEmail] = useState('');
   const history = useHistory();
+
+  // Payouts state
+  interface PayoutRecord {
+    earningId: number;
+    storeId: number;
+    orderId: number;
+    grossAmount: number;
+    platformFee: number;
+    netAmount: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+    storeName?: string;
+    gcashNumber?: string;
+    disbursementRef?: string;
+  }
+  const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
+  const [payoutsSummary, setPayoutsSummary] = useState({ totalPending: 0, totalDisbursed: 0, totalFees: 0 });
+  const [disbursing, setDisbursing] = useState<number | null>(null);
+  const [payoutToast, setPayoutToast] = useState<{ show: boolean; message: string; color: string }>({ show: false, message: '', color: 'success' });
   const [stats, setStats] = useState<DashboardStats>({
     totalShoppers: 0, // Changed from totalUsers to totalShoppers
     pendingApprovals: 0,
@@ -121,12 +144,10 @@ const AdminDashboard: React.FC = () => {
         .eq('userTypeCode', 2)
         .eq('approval_status', 'approved');
 
-      // Get approved stores (userTypeCode = 3)
+      // Get active stores count from GROCERY_STORE table
       const { count: approvedStores } = await supabase
-        .from('USER')
-        .select('*', { count: 'exact', head: true })
-        .eq('userTypeCode', 3)
-        .eq('approval_status', 'approved');
+        .from('GROCERY_STORE')
+        .select('*', { count: 'exact', head: true });
 
       // Get pending store verifications (stores with permits but not verified)
       const { count: pendingStoreVerifications } = await supabase
@@ -193,43 +214,52 @@ const AdminDashboard: React.FC = () => {
   const fetchActiveStores = async () => {
     setLoadingUsers(true);
     try {
-      const { data, error } = await supabase
-        .from('USER')
-        .select(`
-          userId, 
-          email, 
-          firstname, 
-          lastname, 
-          userTypeCode, 
-          approval_status, 
-          created_at,
-          GROCERY_STORE!userId(
-            name,
-            location,
-            store_phone,
-            store_email
-          )
-        `)
-        .eq('userTypeCode', 3)
-        .eq('approval_status', 'approved')
+      console.log('Fetching active stores from GROCERY_STORE...');
+      
+      // Fetch directly from GROCERY_STORE table
+      const { data: stores, error: storesError } = await supabase
+        .from('GROCERY_STORE')
+        .select('storeId, name, location, store_phone, store_email, owner_id, created_at')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (storesError) throw storesError;
+      console.log('Store data from DB:', stores);
+
+      // If we need user info, fetch it based on owner_id
+      const ownerIds = stores?.map(s => s.owner_id).filter(Boolean) || [];
+      let usersMap: Record<string, any> = {};
       
-      // Transform the data to flatten the GROCERY_STORE fields
-      const transformedData = data?.map(user => ({
-        userId: user.userId,
-        email: user.email,
-        firstname: user.firstname,
-        lastname: user.lastname,
-        userTypeCode: user.userTypeCode,
-        approval_status: user.approval_status,
-        created_at: user.created_at,
-        store_name: user.GROCERY_STORE?.[0]?.name,
-        location: user.GROCERY_STORE?.[0]?.location,
-        store_phone: user.GROCERY_STORE?.[0]?.store_phone,
-        store_email: user.GROCERY_STORE?.[0]?.store_email
-      })) || [];
+      if (ownerIds.length > 0) {
+        const { data: users } = await supabase
+          .from('USER')
+          .select('userId, email, firstname, lastname, auth_user_id')
+          .in('auth_user_id', ownerIds);
+        
+        if (users) {
+          users.forEach(u => {
+            usersMap[u.auth_user_id] = u;
+          });
+        }
+      }
+
+      // Map store data
+      const transformedData = stores?.map(store => {
+        const user = usersMap[store.owner_id];
+        return {
+          userId: user?.userId || null,
+          email: user?.email || '',
+          firstname: user?.firstname || '',
+          lastname: user?.lastname || '',
+          userTypeCode: 3,
+          approval_status: 'approved',
+          storeId: store.storeId,
+          store_name: store.name || 'Store name not provided',
+          location: store.location || '',
+          store_phone: store.store_phone || '',
+          store_email: store.store_email || '',
+          created_at: store.created_at
+        };
+      }) || [];
 
       setUsersList(transformedData);
       setModalTitle('Active Stores');
@@ -285,6 +315,166 @@ const AdminDashboard: React.FC = () => {
       console.error('Error logging out:', error);
     }
   };
+
+  const loadPayouts = async () => {
+    setPayoutsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('STORE_EARNINGS')
+        .select(`
+          earningId, storeId, orderId, grossAmount, platformFee,
+          netAmount, paymentMethod, status, createdAt,
+          GROCERY_STORE!storeId(name, gcash_number)
+        `)
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        storeName: r.GROCERY_STORE?.name || `Store #${r.storeId}`,
+        gcashNumber: r.GROCERY_STORE?.gcash_number || '',
+        disbursementRef: r.disbursementRef || '',
+      }));
+      setPayouts(rows);
+      const summary = rows.reduce((acc: any, r: any) => ({
+        totalPending: acc.totalPending + (r.status === 'pending' ? Number(r.netAmount) : 0),
+        totalDisbursed: acc.totalDisbursed + (r.status === 'disbursed' ? Number(r.netAmount) : 0),
+        totalFees: acc.totalFees + Number(r.platformFee),
+      }), { totalPending: 0, totalDisbursed: 0, totalFees: 0 });
+      setPayoutsSummary(summary);
+    } catch (err) {
+      console.error('Error loading payouts:', err);
+    } finally {
+      setPayoutsLoading(false);
+    }
+  };
+
+  const markDisbursed = async (earningId: number, gcashNumber: string) => {
+    if (!gcashNumber) {
+      setPayoutToast({ show: true, message: 'This store has no GCash number set. Ask them to add it in Store Info first.', color: 'danger' });
+      return;
+    }
+    setDisbursing(earningId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/disburse-to-store`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ earningId }),
+        }
+      );
+      const result = await res.json();
+      if (!result.success) {
+        setPayoutToast({ show: true, message: result.error || 'Disbursement failed', color: 'danger' });
+      } else {
+        setPayoutToast({ show: true, message: `✅ Sent! Xendit ref: ${result.disbursementId}`, color: 'success' });
+        await loadPayouts();
+      }
+    } catch (err) {
+      console.error('Disbursement error:', err);
+      setPayoutToast({ show: true, message: 'Network error. Please try again.', color: 'danger' });
+    } finally {
+      setDisbursing(null);
+    }
+  };
+
+  const renderPayouts = () => (
+    <div style={{ padding: '16px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#333' }}>Store Payouts</h2>
+
+      {/* Summary */}
+      <IonGrid style={{ padding: 0, marginBottom: '16px' }}>
+        <IonRow>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#fff8e1', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Pending Payouts</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f57f17' }}>
+                ₱{payoutsSummary.totalPending.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#e8f5e9', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Platform Revenue</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#2e7d32' }}>
+                ₱{payoutsSummary.totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+        </IonRow>
+      </IonGrid>
+
+      {/* Records */}
+      <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+        <IonCardContent style={{ padding: 0 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#f9f9f9', display: 'flex' }}>
+            <div style={{ flex: 1, fontSize: '13px', fontWeight: '600', color: '#555' }}>Store / Order</div>
+            <div style={{ width: '80px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Net</div>
+            <div style={{ width: '90px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Action</div>
+          </div>
+
+          {payoutsLoading && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>Loading...</div>
+          )}
+          {!payoutsLoading && payouts.length === 0 && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>
+              No earnings records yet.
+            </div>
+          )}
+          {!payoutsLoading && payouts.map((p, idx) => (
+            <div key={p.earningId} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '12px 16px',
+              borderBottom: idx < payouts.length - 1 ? '1px solid #f0f0f0' : 'none',
+              background: idx % 2 === 0 ? '#fff' : '#fafafa'
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{p.storeName}</div>
+                <div style={{ fontSize: '12px', color: '#888' }}>
+                  Order #{p.orderId} · {p.paymentMethod} ·{' '}
+                  {new Date(p.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                </div>
+                {p.gcashNumber && (
+                  <div style={{ fontSize: '12px', color: '#1565c0', marginTop: '2px' }}>
+                    📱 GCash: {p.gcashNumber}
+                  </div>
+                )}
+                {p.disbursementRef && (
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
+                    Ref: {p.disbursementRef}
+                  </div>
+                )}
+              </div>
+              <div style={{ width: '80px', textAlign: 'right', fontWeight: 'bold', color: '#333', fontSize: '14px' }}>
+                ₱{Number(p.netAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ width: '90px', textAlign: 'right' }}>
+                {p.status === 'disbursed' ? (
+                  <IonBadge color="success" style={{ fontSize: '11px' }}>Paid Out</IonBadge>
+                ) : (
+                  <IonButton
+                    size="small"
+                    fill="solid"
+                    color="primary"
+                    disabled={disbursing === p.earningId}
+                    onClick={() => markDisbursed(p.earningId, p.gcashNumber || '')}
+                    style={{ '--padding-start': '8px', '--padding-end': '8px', fontSize: '11px' }}
+                  >
+                    {disbursing === p.earningId ? '...' : 'Pay Out'}
+                  </IonButton>
+                )}
+              </div>
+            </div>
+          ))}
+        </IonCardContent>
+      </IonCard>
+    </div>
+  );
 
   const renderDashboard = () => (
     <div className="dashboard-container">
@@ -446,7 +636,11 @@ const AdminDashboard: React.FC = () => {
         {/* Segment Navigation */}
         <IonSegment 
           value={selectedSegment} 
-          onIonChange={e => setSelectedSegment(e.detail.value as string)}
+          onIonChange={e => {
+            const val = e.detail.value as string;
+            setSelectedSegment(val);
+            if (val === 'payouts') loadPayouts();
+          }}
           className="admin-segment"
         >
           <IonSegmentButton value="dashboard">
@@ -460,11 +654,19 @@ const AdminDashboard: React.FC = () => {
               <IonBadge color="danger">{stats.pendingApprovals}</IonBadge>
             )}
           </IonSegmentButton>
+          <IonSegmentButton value="payouts">
+            <IonIcon icon={cashOutline} />
+            <IonLabel>Payouts</IonLabel>
+            {payoutsSummary.totalPending > 0 && (
+              <IonBadge color="warning">!</IonBadge>
+            )}
+          </IonSegmentButton>
         </IonSegment>
 
         {/* Content based on selected segment */}
         {selectedSegment === 'dashboard' && renderDashboard()}
         {selectedSegment === 'approvals' && <AdminApproval />}
+        {selectedSegment === 'payouts' && renderPayouts()}
 
         {/* Logout Button */}
         <div className="admin-logout-section">
@@ -614,6 +816,14 @@ const AdminDashboard: React.FC = () => {
             )}
           </IonContent>
         </IonModal>
+
+        <IonToast
+          isOpen={payoutToast.show}
+          message={payoutToast.message}
+          color={payoutToast.color as any}
+          duration={4000}
+          onDidDismiss={() => setPayoutToast(t => ({ ...t, show: false }))}
+        />
       </IonContent>
     </IonPage>
   );

@@ -44,7 +44,10 @@ import {
   locationOutline,
   alertCircle,
   checkmarkCircle,
-  notificationsOutline
+  notificationsOutline,
+  cashOutline,
+  timeOutline,
+  checkmarkCircleOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import { LocationService } from '../services/locationService';
@@ -56,12 +59,14 @@ interface StoreInfo {
   store_id?: number;
   storeId?: number;
   id?: number;
-  name: string;
-  store_description: string;
-  store_address: string;
-  store_phone: string;
-  store_email: string;
-  store_image_url: string;
+  name?: string;
+  storeName?: string;  // Database column name
+  store_description?: string;
+  store_address?: string;  // Database column name
+  store_phone?: string;
+  store_email?: string;
+  gcash_number?: string;
+  store_image_url?: string;
   latitude?: number;
   longitude?: number;
   bir_permit?: string;
@@ -69,6 +74,9 @@ interface StoreInfo {
   bir_permit_image?: string;
   dti_permit_image?: string;
   verified?: boolean;
+  owner_id?: string;  // The foreign key to auth.users(id)
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface StockItem {
@@ -100,12 +108,15 @@ const StoreDashboard: React.FC = () => {
   const history = useHistory();
   const [selectedSegment, setSelectedSegment] = useState<string>('dashboard');
   const [dateRange, setDateRange] = useState<string>('week'); // 'week', 'month', 'year', 'range'
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
     name: '',
     store_description: '',
     store_address: '',
     store_phone: '',
     store_email: '',
+    gcash_number: '',
     store_image_url: '',
     latitude: undefined,
     longitude: undefined,
@@ -160,6 +171,30 @@ const StoreDashboard: React.FC = () => {
   // Product Type Matching States
   const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
   const [selectedProductTypeId, setSelectedProductTypeId] = useState<number | null>(null);
+
+  // Earnings states
+  interface EarningRecord {
+    earningId: number;
+    orderId: number;
+    grossAmount: number;
+    platformFee: number;
+    netAmount: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+  }
+  const [earnings, setEarnings] = useState<EarningRecord[]>([]);
+  const [earningsLoading, setEarningsLoading] = useState(false);
+  const [earningsSummary, setEarningsSummary] = useState({ totalGross: 0, totalFees: 0, totalNet: 0, pendingNet: 0, disbursedNet: 0 });
+  
+  // Dashboard Statistics states
+  const [dashboardStats, setDashboardStats] = useState({
+    totalSales: null as number | null,
+    totalCustomers: null as number | null,
+    totalOrders: null as number | null,
+    averageOrderValue: null as number | null
+  });
+  const [statsLoading, setStatsLoading] = useState(false);
   // Categories for items
   const categories = [
     'Fruits & Vegetables',
@@ -206,6 +241,104 @@ const StoreDashboard: React.FC = () => {
     }
   };
 
+  // Load dashboard statistics from ORDERS table
+  const loadDashboardStats = async (userId: string) => {
+    setStatsLoading(true);
+    try {
+      // First get the store ID for this user
+      const { data: storeData } = await supabase
+        .from('GROCERY_STORE')
+        .select('storeId')
+        .eq('owner_id', userId)
+        .single();
+
+      if (!storeData) {
+        setDashboardStats({ totalSales: null, totalCustomers: null, totalOrders: null, averageOrderValue: null });
+        setStatsLoading(false);
+        return;
+      }
+
+      const storeId = storeData.storeId;
+      
+      // Calculate date range based on selected dateRange
+      let startDate: Date | null = null;
+      const now = new Date();
+      
+      switch (dateRange) {
+        case 'week':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        case 'range':
+          // For custom range, we'll use all-time data for now
+          startDate = null;
+          break;
+      }
+
+      // Build query for orders
+      let ordersQuery = supabase
+        .from('ORDERS')
+        .select('*')
+        .eq('storeId', storeId)
+        .eq('status', 'picked_up'); // Only completed orders
+
+      if (startDate) {
+        ordersQuery = ordersQuery.gte('createdAt', startDate.toISOString());
+      }
+
+      const { data: orders, error: ordersError } = await ordersQuery;
+
+      if (ordersError) {
+        console.error('Error loading orders for stats:', ordersError);
+        setStatsLoading(false);
+        return;
+      }
+
+      if (!orders || orders.length === 0) {
+        setDashboardStats({ totalSales: null, totalCustomers: null, totalOrders: null, averageOrderValue: null });
+        setStatsLoading(false);
+        return;
+      }
+
+      // Calculate total sales (sum of order totals)
+      const totalSales = orders.reduce((sum, order) => sum + Number(order.total), 0);
+      
+      // Count total orders
+      const totalOrders = orders.length;
+      
+      // Get unique customer count
+      const uniqueCustomers = new Set(orders.map(o => o.userId));
+      const totalCustomers = uniqueCustomers.size;
+      
+      // Calculate average order value
+      const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : null;
+
+      setDashboardStats({
+        totalSales,
+        totalCustomers,
+        totalOrders,
+        averageOrderValue
+      });
+    } catch (error) {
+      console.error('Error loading dashboard stats:', error);
+      setDashboardStats({ totalSales: null, totalCustomers: null, totalOrders: null, averageOrderValue: null });
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // Reload stats when date range changes
+  useEffect(() => {
+    if (currentUser && isStoreDataLoaded) {
+      loadDashboardStats(currentUser.id);
+    }
+  }, [dateRange, customStartDate, customEndDate, currentUser, isStoreDataLoaded]);
+
   useEffect(() => {
     const loadUserData = async () => {
       try {
@@ -215,6 +348,7 @@ const StoreDashboard: React.FC = () => {
           await loadStoreInfo(user.id);
           await loadStockItems(user.id);
           await loadUnreadNotifications();
+          await loadDashboardStats(user.id);
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -234,6 +368,7 @@ const StoreDashboard: React.FC = () => {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error loading store info:', error);
+        setIsStoreDataLoaded(true);
         return;
       }
 
@@ -241,15 +376,62 @@ const StoreDashboard: React.FC = () => {
         // Map database column names to frontend field names
         const mappedData = {
           ...data,
-          store_address: data.location, // Map location to store_address
+          name: data.storeName ?? data.name ?? '',
+          store_address: data.store_address ?? data.location ?? '',
           latitude: data.latitude,
-          longitude: data.longitude
+          longitude: data.longitude,
+          store_description: data.storeDescription ?? data.store_description ?? ''
         };
         console.log('Store info loaded:', mappedData);
+        console.log('Store owner_id:', data.owner_id);
         console.log('Verified status:', mappedData.verified);
         setStoreInfo(mappedData);
         setIsStoreDataLoaded(true);
       } else {
+        // No store record exists for this user — auto-create one so the
+        // verification modal can be shown
+        console.log('No store found for user, creating default store record...');
+        console.log('userId being used:', userId);
+        
+        const insertData = {
+          storeName: '',  // Match database column name
+          owner_id: userId,
+          verified: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        console.log('Inserting with data:', insertData);
+        
+        const { data: newStore, error: insertError } = await supabase
+          .from('GROCERY_STORE')
+          .insert([insertData])
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error auto-creating store record:', insertError);
+          console.error('Error details:', JSON.stringify(insertError, null, 2));
+          // Check if RLS is blocking - try with explicit auth context
+          if (insertError.code === '42501' || insertError.message.includes('permission')) {
+            console.error('RLS PERMISSION DENIED - Check your RLS policies');
+          }
+          setIsStoreDataLoaded(true);
+          return;
+        }
+
+        if (newStore) {
+          console.log('Default store record created successfully:', newStore);
+          console.log('Created store owner_id:', newStore.owner_id);
+          const mappedData = {
+            ...newStore,
+            name: newStore.storeName ?? newStore.name ?? '',
+            store_address: newStore.store_address ?? newStore.location ?? '',
+            store_description: newStore.storeDescription ?? newStore.store_description ?? '',
+            latitude: newStore.latitude,
+            longitude: newStore.longitude
+          };
+          setStoreInfo(mappedData);
+        }
         setIsStoreDataLoaded(true);
       }
     } catch (error) {
@@ -333,7 +515,7 @@ const StoreDashboard: React.FC = () => {
 
   // Handle address geocoding
   const handleGeocodeAddress = async () => {
-    if (!storeInfo.store_address.trim()) {
+    if (!storeInfo.store_address?.trim()) {
       alert('Please enter an address first');
       return;
     }
@@ -447,11 +629,12 @@ I'll automatically extract and save them for you!
         console.error('Error finding existing store for owner:', selectError);
       }
 
-      const payload: Partial<StoreInfo> & { owner_id: string; updated_at: string } = {
-        latitude: lat,
-        longitude: lng,
+      const payload: { storeName: string; owner_id: string; updated_at: string; latitude: number; longitude: number } = {
+        storeName: '',  // Match database column name
         owner_id: currentUser.id,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        latitude: lat,
+        longitude: lng
       };
 
       let result;
@@ -480,11 +663,13 @@ I'll automatically extract and save them for you!
         // Map db fields back to frontend storeInfo
         const mapped = {
           ...result.data,
-          store_address: result.data.location || storeInfo.store_address,
+          name: result.data.storeName ?? result.data.name ?? '',
+          store_address: result.data.store_address || storeInfo.store_address,
           latitude: result.data.latitude ?? lat,
           longitude: result.data.longitude ?? lng
         };
         setStoreInfo(mapped);
+        console.log('Coordinates saved successfully. Store owner_id:', result.data.owner_id);
       }
     } catch (err) {
       console.error('Error persisting coordinates to GROCERY_STORE:', err);
@@ -498,17 +683,19 @@ I'll automatically extract and save them for you!
       // Map the frontend fields to database column names
       const storeData = {
         storeId: storeInfo.store_id || storeInfo.storeId,
-        name: storeInfo.name,
+        storeName: storeInfo.name,  // Match database column name
         store_description: storeInfo.store_description,
-        location: storeInfo.store_address, // Map store_address to location
+        store_address: storeInfo.store_address,  // Match database column name
         store_phone: storeInfo.store_phone,
         store_email: storeInfo.store_email,
+        gcash_number: storeInfo.gcash_number,
         store_image_url: storeInfo.store_image_url,
         latitude: storeInfo.latitude,
         longitude: storeInfo.longitude,
         owner_id: currentUser.id,
         updated_at: new Date().toISOString()
       };
+      console.log('Saving store with data:', storeData);
 
       // Use upsert to either insert or update based on storeId
       const result = await supabase
@@ -529,10 +716,13 @@ I'll automatically extract and save them for you!
         // Map database column names back to frontend field names
         const mappedData = {
           ...result.data,
-          store_address: result.data.location, // Map location back to store_address
+          store_address: result.data.store_address ?? '', // Use store_address directly
+          store_description: result.data.storeDescription ?? result.data.store_description ?? '',
+          name: result.data.storeName ?? result.data.name ?? '',
           latitude: result.data.latitude,
           longitude: result.data.longitude
         };
+        console.log('Saved store result mapped:', mappedData);
         setStoreInfo(mappedData);
       }
 
@@ -1237,52 +1427,148 @@ I'll automatically extract and save them for you!
   };
 
   // Mock data for sales report
-  const getMockSalesData = () => {
-    const data = {
-      week: {
-        dateText: '5 - 11 OCT 2025',
-        totalSales: 12345.00,
-        totalCustomers: 76,
-        totalOrders: 103,
-        averageOrderValue: 123.00
-      },
-      month: {
-        dateText: 'OCTOBER 2025',
-        totalSales: 45678.00,
-        totalCustomers: 234,
-        totalOrders: 389,
-        averageOrderValue: 117.50
-      },
-      year: {
-        dateText: '2025',
-        totalSales: 456789.00,
-        totalCustomers: 2156,
-        totalOrders: 3567,
-        averageOrderValue: 128.10
-      },
-      range: {
-        dateText: 'CUSTOM RANGE',
-        totalSales: 23456.00,
-        totalCustomers: 145,
-        totalOrders: 256,
-        averageOrderValue: 91.63
-      }
-    };
-    return data[dateRange as keyof typeof data];
+  const loadEarnings = async (storeId: number) => {
+    setEarningsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('STORE_EARNINGS')
+        .select('earningId, orderId, grossAmount, platformFee, netAmount, paymentMethod, status, createdAt')
+        .eq('storeId', storeId)
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+      const rows = data || [];
+      setEarnings(rows);
+      const summary = rows.reduce((acc, r) => ({
+        totalGross: acc.totalGross + Number(r.grossAmount),
+        totalFees: acc.totalFees + Number(r.platformFee),
+        totalNet: acc.totalNet + Number(r.netAmount),
+        pendingNet: acc.pendingNet + (r.status === 'pending' ? Number(r.netAmount) : 0),
+        disbursedNet: acc.disbursedNet + (r.status === 'disbursed' ? Number(r.netAmount) : 0),
+      }), { totalGross: 0, totalFees: 0, totalNet: 0, pendingNet: 0, disbursedNet: 0 });
+      setEarningsSummary(summary);
+    } catch (err) {
+      console.error('Error loading earnings:', err);
+    } finally {
+      setEarningsLoading(false);
+    }
   };
 
-  // Mock data for popular items
-  const mockPopularItems = [
-    { name: 'Vinegar', size: '700ml', brand: 'Datu Puti', unitsSold: 150 },
-    { name: 'Toothpaste', size: '40g', brand: 'Colgate', unitsSold: 130 },
-    { name: 'Soy Sauce', size: '1L', brand: 'Silver Swan', unitsSold: 125 },
-    { name: 'Shampoo', size: '200ml', brand: 'Palmolive', unitsSold: 118 },
-    { name: 'Detergent', size: '500g', brand: 'Tide', unitsSold: 105 }
-  ];
+  const renderEarnings = () => (
+    <div style={{ padding: '16px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#333' }}>My Earnings</h2>
+
+      {/* Summary Cards */}
+      <IonGrid style={{ padding: 0, marginBottom: '16px' }}>
+        <IonRow>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#e8f5e9', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Pending Payout</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#2e7d32' }}>
+                ₱{earningsSummary.pendingNet.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+          <IonCol size="6" style={{ padding: '4px' }}>
+            <div style={{ background: '#e3f2fd', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase', marginBottom: '4px' }}>Total Disbursed</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1565c0' }}>
+                ₱{earningsSummary.disbursedNet.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </IonCol>
+        </IonRow>
+        <IonRow>
+          <IonCol size="12" style={{ padding: '4px' }}>
+            <div style={{ background: '#f5f5f5', borderRadius: '12px', padding: '14px', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', marginBottom: '4px' }}>Total Sales</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>₱{earningsSummary.totalGross.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div style={{ width: '1px', background: '#ddd' }} />
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', marginBottom: '4px' }}>Platform Fees (5%)</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#e53935' }}>-₱{earningsSummary.totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+          </IonCol>
+        </IonRow>
+      </IonGrid>
+
+      {/* Transactions List */}
+      <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+        <IonCardContent style={{ padding: 0 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#f9f9f9', display: 'flex' }}>
+            <div style={{ flex: 1, fontSize: '13px', fontWeight: '600', color: '#555' }}>Order / Date</div>
+            <div style={{ width: '90px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Net Earned</div>
+            <div style={{ width: '80px', fontSize: '13px', fontWeight: '600', color: '#555', textAlign: 'right' }}>Status</div>
+          </div>
+
+          {earningsLoading && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>Loading...</div>
+          )}
+          {!earningsLoading && earnings.length === 0 && (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#999' }}>
+              <IonIcon icon={cashOutline} style={{ fontSize: '40px', display: 'block', margin: '0 auto 8px' }} />
+              No earnings yet. Earnings appear after a GCash or Maya payment is completed.
+            </div>
+          )}
+          {!earningsLoading && earnings.map((e, idx) => (
+            <div key={e.earningId} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '12px 16px',
+              borderBottom: idx < earnings.length - 1 ? '1px solid #f0f0f0' : 'none',
+              background: idx % 2 === 0 ? '#fff' : '#fafafa'
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>Order #{e.orderId}</div>
+                <div style={{ fontSize: '12px', color: '#888' }}>
+                  {new Date(e.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  &nbsp;· {e.paymentMethod}
+                </div>
+              </div>
+              <div style={{ width: '90px', textAlign: 'right', fontWeight: 'bold', color: '#333', fontSize: '14px' }}>
+                ₱{Number(e.netAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ width: '80px', textAlign: 'right' }}>
+                <IonBadge color={e.status === 'disbursed' ? 'success' : 'warning'} style={{ fontSize: '11px' }}>
+                  {e.status === 'disbursed' ? 'Paid Out' : 'Pending'}
+                </IonBadge>
+              </div>
+            </div>
+          ))}
+        </IonCardContent>
+      </IonCard>
+
+      <p style={{ marginTop: '12px', fontSize: '12px', color: '#999', textAlign: 'center' }}>
+        Payouts are processed by the Admin. Contact support if your payout is overdue.
+      </p>
+    </div>
+  );
+
+
+  const getDateRangeLabel = () => {
+    const now = new Date();
+    switch (dateRange) {
+      case 'week': {
+        const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+        return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      }
+      case 'month':
+        return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      case 'year':
+        return now.getFullYear().toString();
+      case 'range':
+        if (customStartDate && customEndDate) {
+          return `${new Date(customStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${new Date(customEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        }
+        return 'CUSTOM RANGE (select dates below)';
+      default:
+        return '';
+    }
+  };
 
   const renderDashboard = () => {
-    const salesData = getMockSalesData();
-    
     return (
       <div className="dashboard-content">
         {/* Date Range Selector */}
@@ -1293,23 +1579,75 @@ I'll automatically extract and save them for you!
             style={{ 
               '--background': '#f5f5f5',
               borderRadius: '25px',
-              padding: '4px'
+              padding: '2px',
+              display: 'flex',
+              overflow: 'hidden'
             }}
           >
-            <IonSegmentButton value="week" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Week</IonLabel>
+            <IonSegmentButton value="week" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Week</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="month" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Month</IonLabel>
+            <IonSegmentButton value="month" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Month</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="year" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Year</IonLabel>
+            <IonSegmentButton value="year" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '11px', minWidth: '0', margin: '0' }}>Year</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="range" style={{ borderRadius: '25px', minHeight: '36px' }}>
-              <IonLabel>Range</IonLabel>
+            <IonSegmentButton value="range" style={{ borderRadius: '20px', minHeight: '32px', flex: '1 1 0', padding: '0 2px' }}>
+              <IonLabel style={{ fontSize: '10px', minWidth: '0', margin: '0' }}>Range</IonLabel>
             </IonSegmentButton>
           </IonSegment>
         </div>
+
+        {/* Custom Date Range Inputs */}
+        {dateRange === 'range' && (
+          <div style={{ padding: '0 16px', marginBottom: '16px' }}>
+            <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+              <IonCardContent style={{ padding: '12px 16px' }}>
+                <IonGrid style={{ padding: 0 }}>
+                  <IonRow>
+                    <IonCol size="6">
+                      <IonLabel style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>
+                        Start Date
+                      </IonLabel>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          borderRadius: '8px',
+                          border: '1px solid #e0e0e0',
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </IonCol>
+                    <IonCol size="6">
+                      <IonLabel style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>
+                        End Date
+                      </IonLabel>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          borderRadius: '8px',
+                          border: '1px solid #e0e0e0',
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </IonCol>
+                  </IonRow>
+                </IonGrid>
+              </IonCardContent>
+            </IonCard>
+          </div>
+        )}
 
         {/* Sales Statistics Card */}
         <div style={{ padding: '0 16px', marginBottom: '16px' }}>
@@ -1322,7 +1660,7 @@ I'll automatically extract and save them for you!
                 marginBottom: '12px',
                 marginTop: 0 
               }}>
-                Showing data for: {salesData.dateText}
+                {statsLoading ? 'Loading...' : `Showing data for: ${getDateRangeLabel()}`}
               </p>
               
               <IonGrid style={{ padding: 0 }}>
@@ -1335,7 +1673,9 @@ I'll automatically extract and save them for you!
                       backgroundColor: '#fff'
                     }}>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
-                        ₱ {salesData.totalSales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {dashboardStats.totalSales !== null
+                          ? `₱ ${dashboardStats.totalSales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : ''}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
                         TOTAL SALES
@@ -1351,7 +1691,7 @@ I'll automatically extract and save them for you!
                       backgroundColor: '#fff'
                     }}>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
-                        {salesData.totalCustomers}
+                        {dashboardStats.totalCustomers !== null ? dashboardStats.totalCustomers : ''}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
                         TOTAL CUSTOMERS
@@ -1369,7 +1709,7 @@ I'll automatically extract and save them for you!
                       backgroundColor: '#fff'
                     }}>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
-                        {salesData.totalOrders}
+                        {dashboardStats.totalOrders !== null ? dashboardStats.totalOrders : ''}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
                         TOTAL ORDERS
@@ -1385,7 +1725,9 @@ I'll automatically extract and save them for you!
                       backgroundColor: '#fff'
                     }}>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
-                        ₱ {salesData.averageOrderValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {dashboardStats.averageOrderValue !== null
+                          ? `₱ ${dashboardStats.averageOrderValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : ''}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
                         AVERAGE ORDER VALUE
@@ -1411,55 +1753,8 @@ I'll automatically extract and save them for you!
           </h2>
           
           <IonCard style={{ margin: 0, borderRadius: '12px', border: '1px solid #e0e0e0' }}>
-            <IonCardContent style={{ padding: '0' }}>
-              {/* Table Header */}
-              <div style={{ 
-                display: 'flex', 
-                padding: '12px 16px',
-                borderBottom: '1px solid #e0e0e0',
-                backgroundColor: '#f9f9f9'
-              }}>
-                <div style={{ flex: 1, fontSize: '14px', fontWeight: '600', color: '#333' }}>
-                  Item
-                </div>
-                <div style={{ width: '100px', fontSize: '14px', fontWeight: '600', color: '#333', textAlign: 'right' }}>
-                  Units Sold
-                </div>
-              </div>
-              
-              {/* Table Rows */}
-              {mockPopularItems.map((item, index) => (
-                <div 
-                  key={index}
-                  style={{ 
-                    display: 'flex', 
-                    padding: '12px 16px',
-                    borderBottom: index < mockPopularItems.length - 1 ? '1px solid #f0f0f0' : 'none',
-                    backgroundColor: index % 2 === 0 ? '#fff' : '#fafafa'
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '15px', fontWeight: '500', color: '#333', marginBottom: '2px' }}>
-                      {item.name}
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#666' }}>
-                      {item.size} &nbsp;&nbsp; {item.brand}
-                    </div>
-                  </div>
-                  <div style={{ 
-                    width: '100px', 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
-                    color: '#333',
-                    textAlign: 'right',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end'
-                  }}>
-                    {item.unitsSold}
-                  </div>
-                </div>
-              ))}
+            <IonCardContent style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
+              No popular items data available yet.
             </IonCardContent>
           </IonCard>
         </div>
@@ -1514,6 +1809,10 @@ I'll automatically extract and save them for you!
             <IonItem>
               <IonLabel position="stacked">Email</IonLabel>
               <p>{storeInfo.store_email || 'Not set'}</p>
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">GCash Number (for payouts)</IonLabel>
+              <p>{storeInfo.gcash_number || 'Not set'}</p>
             </IonItem>
             <IonItem>
               <IonLabel position="stacked">Store Image</IonLabel>
@@ -1631,7 +1930,14 @@ I'll automatically extract and save them for you!
       <IonContent fullscreen>
         <IonSegment 
           value={selectedSegment} 
-          onIonChange={e => setSelectedSegment(e.detail.value as string)}
+          onIonChange={e => {
+            const val = e.detail.value as string;
+            setSelectedSegment(val);
+            if (val === 'earnings') {
+              const sid = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
+              if (sid) loadEarnings(sid);
+            }
+          }}
         >
           <IonSegmentButton value="dashboard">
             <IonLabel>Dashboard</IonLabel>
@@ -1645,11 +1951,16 @@ I'll automatically extract and save them for you!
             <IonLabel>Stock</IonLabel>
             <IonIcon icon={cube} />
           </IonSegmentButton>
+          <IonSegmentButton value="earnings">
+            <IonLabel>Earnings</IonLabel>
+            <IonIcon icon={cashOutline} />
+          </IonSegmentButton>
         </IonSegment>
 
         {selectedSegment === 'dashboard' && renderDashboard()}
         {selectedSegment === 'store' && renderStoreInfo()}
         {selectedSegment === 'stock' && renderStock()}
+        {selectedSegment === 'earnings' && renderEarnings()}
 
         {/* Store Info Modal */}
         <IonModal isOpen={isStoreModalOpen} onDidDismiss={() => setIsStoreModalOpen(false)}>
@@ -1743,7 +2054,7 @@ I'll automatically extract and save them for you!
                           size="small"
                           color="primary"
                           onClick={handleGeocodeAddress}
-                          disabled={isGeocodingAddress || !storeInfo.store_address.trim()}
+                          disabled={isGeocodingAddress || !storeInfo.store_address?.trim()}
                         >
                           <IonIcon icon={locationOutline} slot="start" />
                           {isGeocodingAddress ? 'Finding...' : 'Get Coordinates'}
@@ -1792,6 +2103,20 @@ I'll automatically extract and save them for you!
                           onIonInput={(e) => setStoreInfo({...storeInfo, store_email: e.detail.value!})}
                           placeholder="Enter email address"
                           type="email"
+                        />
+                      </IonItem>
+                    </IonCol>
+                  </IonRow>
+                  <IonRow>
+                    <IonCol size="12" style={{ padding: '4px 0 0 0' }}>
+                      <IonItem className="compact-item">
+                        <IonLabel position="stacked">GCash Number (for payouts)</IonLabel>
+                        <IonInput
+                          value={storeInfo.gcash_number}
+                          onIonInput={(e) => setStoreInfo({...storeInfo, gcash_number: e.detail.value!})}
+                          placeholder="e.g. 09171234567"
+                          inputMode="tel"
+                          maxlength={11}
                         />
                       </IonItem>
                     </IonCol>
@@ -2537,6 +2862,18 @@ I'll automatically extract and save them for you!
               }}
             >
               Get verified
+            </IonButton>
+
+            {/* Logout Button */}
+            <IonButton
+              expand="block"
+              fill="outline"
+              color="danger"
+              onClick={handleLogout}
+              style={{ marginTop: '12px' }}
+            >
+              <IonIcon icon={logOutOutline} slot="start" />
+              Logout
             </IonButton>
             </div>
           </div>

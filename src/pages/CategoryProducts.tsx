@@ -25,6 +25,8 @@ import {
   IonBadge
 } from '@ionic/react';
 import { star, heart, cartOutline, locationOutline, add, remove, close } from 'ionicons/icons';
+import ProductSizeSelector, { ProductVariant } from '../components/ProductSizeSelector';
+import ProductVariantService from '../services/productVariantService';
 import './Home.css';
 
 interface Product {
@@ -38,6 +40,7 @@ interface Product {
   item_image_url?: string;
   storeId: number;
   storeName?: string;
+  brand?: string;
 }
 
 const CategoryProducts: React.FC = () => {
@@ -53,6 +56,11 @@ const CategoryProducts: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [subtotal, setSubtotal] = useState(0);
   
+  // Size selector state
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(undefined);
+  const [loadingVariants, setLoadingVariants] = useState(false);
+  
   // Toast state
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -66,6 +74,22 @@ const CategoryProducts: React.FC = () => {
     } catch {
       return false;
     }
+  };
+
+  // Helper function to deduplicate products
+  const deduplicateProducts = (products: Product[]): Product[] => {
+    const seen = new Map<string, Product>();
+    
+    products.forEach(product => {
+      // Create unique key based on name, brand, unit, and description
+      const key = `${product.name}|${product.brand || ''}|${product.unit}|${product.description}`;
+      
+      if (!seen.has(key)) {
+        seen.set(key, product);
+      }
+    });
+    
+    return Array.from(seen.values());
   };
   
   // Debug: Test database connection on component mount
@@ -94,22 +118,8 @@ const CategoryProducts: React.FC = () => {
       
       console.log('📊 Total items in table:', totalCount);
 
-      // Test the specific category query
-      const { data: categoryTest, error: categoryError, count: categoryCount } = await supabase
-        .from('ITEMS_IN_STORE')
-        .select('*', { count: 'exact' })
-        .eq('category', decodedCategory);
-      
-      console.log('🎯 Category query result:', {
-        category: decodedCategory,
-        count: categoryCount,
-        actualDataLength: categoryTest?.length,
-        error: categoryError,
-        firstItem: categoryTest?.[0]
-      });
-
-      // Main query without JOIN first to test basic functionality
-      const { data, error } = await supabase
+      // Handle "Fruits & Vegetables" as a combined category
+      let query = supabase
         .from('ITEMS_IN_STORE')
         .select(`
           storeItemId,
@@ -120,10 +130,27 @@ const CategoryProducts: React.FC = () => {
           unit,
           availability,
           item_image_url,
-          storeId
+          storeId,
+          brand
         `)
-        .eq('category', decodedCategory)
         .gt('availability', 0);
+
+      // If category is a combined category, search for both
+      if (decodedCategory === 'Fruits & Vegetables') {
+        query = query.or('category.eq.Fruits,category.eq.Vegetables');
+        console.log('🥬 Searching for Fruits OR Vegetables');
+      } else if (decodedCategory === 'Meat & Seafood') {
+        query = query.or('category.eq.Meat,category.eq.Seafood,category.eq.Meat & Seafood');
+        console.log('🥩 Searching for Meat OR Seafood');
+      } else if (decodedCategory === 'Dairy & Eggs') {
+        query = query.or('category.eq.Dairy,category.eq.Eggs,category.eq.Dairy & Eggs');
+        console.log('🥛 Searching for Dairy OR Eggs');
+      } else {
+        query = query.eq('category', decodedCategory);
+        console.log('🎯 Searching for exact category:', decodedCategory);
+      }
+
+      const { data, error } = await query;
 
       console.log('🏪 Main query result:', { 
         category: decodedCategory,
@@ -148,11 +175,15 @@ const CategoryProducts: React.FC = () => {
             availability: item.availability as number,
             item_image_url: item.item_image_url as string | undefined,
             storeId: item.storeId as number,
-            storeName: 'Store' // We'll get store names separately if needed
+            storeName: 'Store', // We'll get store names separately if needed
+            brand: item.brand as string | undefined
           };
         });
-        console.log('🎉 Final products to display:', productsWithStore);
-        setProducts(productsWithStore);
+        
+        // Deduplicate products based on name, brand, unit, and description
+        const uniqueProducts = deduplicateProducts(productsWithStore);
+        console.log('🎉 Final products to display:', uniqueProducts.length, 'unique products');
+        setProducts(uniqueProducts);
       } else {
         console.log('⚠️ No products found for this category');
         setProducts([]);
@@ -194,11 +225,36 @@ const CategoryProducts: React.FC = () => {
   );
 
   // Modal functions
-  const openAddToCartModal = (product: Product) => {
+  const openAddToCartModal = async (product: Product) => {
     setSelectedProduct(product);
     setQuantity(1);
     setSubtotal(product.price);
     setIsModalOpen(true);
+    
+    // Load product variants
+    setLoadingVariants(true);
+    try {
+      // Use product name and brand to get variants
+      const productName = product.name;
+      const brand = product.brand || '';
+      
+      console.log('Loading variants for:', productName, 'Brand:', brand);
+      const variants = await ProductVariantService.getProductVariants(productName, brand);
+      console.log('Variants found:', variants);
+      setProductVariants(variants);
+      
+      // If variants found, set the current product as selected variant
+      if (variants.length > 0) {
+        // Find the variant that matches current product
+        const currentVariant = variants.find(v => v.unit === product.unit);
+        setSelectedVariant(currentVariant || variants[0]);
+      }
+    } catch (error) {
+      console.error('Error loading variants:', error);
+      setProductVariants([]);
+    } finally {
+      setLoadingVariants(false);
+    }
   };
 
   const closeModal = () => {
@@ -206,21 +262,31 @@ const CategoryProducts: React.FC = () => {
     setSelectedProduct(null);
     setQuantity(1);
     setSubtotal(0);
+    setProductVariants([]);
+    setSelectedVariant(undefined);
   };
 
   const incrementQuantity = () => {
-    if (selectedProduct) {
-      const newQuantity = quantity + 1;
-      setQuantity(newQuantity);
-      setSubtotal(selectedProduct.price * newQuantity);
-    }
+    const price = selectedVariant?.price || selectedProduct?.price || 0;
+    const newQuantity = quantity + 1;
+    setQuantity(newQuantity);
+    setSubtotal(price * newQuantity);
   };
 
   const decrementQuantity = () => {
-    if (selectedProduct && quantity > 1) {
+    if (quantity > 1) {
+      const price = selectedVariant?.price || selectedProduct?.price || 0;
       const newQuantity = quantity - 1;
       setQuantity(newQuantity);
-      setSubtotal(selectedProduct.price * newQuantity);
+      setSubtotal(price * newQuantity);
+    }
+  };
+  
+  const handleVariantSelect = (variant: ProductVariant) => {
+    setSelectedVariant(variant);
+    // Update subtotal with new variant price
+    if (variant.price) {
+      setSubtotal(variant.price * quantity);
     }
   };
 
@@ -401,7 +467,8 @@ const CategoryProducts: React.FC = () => {
       'Bakery': '🍞',
       'Pantry': '🏺',
       'Snacks': '🍿',
-      'Beverages': '🥤'
+      'Beverages': '🥤',
+      'Rice & Grains': '🌾'
     };
     return categoryMap[category] || '🛒';
   };
@@ -417,7 +484,7 @@ const CategoryProducts: React.FC = () => {
             {getCategoryIcon(category || '')} {decodeURIComponent(category || '')}
           </IonTitle>
           <IonButtons slot="end">
-            <IonButton fill="clear" onClick={() => history.push('/cart')} style={{ position: 'relative' }}>
+            <IonButton fill="clear" onClick={() => history.push('/my-purchases')} style={{ position: 'relative' }}>
               <IonIcon icon={cartOutline} />
               {cartItemCount > 0 && (
                 <IonBadge 
@@ -508,6 +575,9 @@ const CategoryProducts: React.FC = () => {
                       <IonCardContent>
                         <div className="product-info">
                           <h4 className="product-name">{product.name}</h4>
+                          {product.brand && (
+                            <p className="product-description" style={{ fontSize: '13px', color: '#666', margin: '4px 0 8px 0' }}>{product.brand}</p>
+                          )}
                           <p className="product-description">{product.description}</p>
                           <div className="product-rating">
                             <IonIcon icon={star} color="warning" />
@@ -589,10 +659,34 @@ const CategoryProducts: React.FC = () => {
                   <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                     <h2>{selectedProduct.name}</h2>
                     <p style={{ color: '#666' }}>{selectedProduct.description}</p>
-                    <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
-                      ₱{selectedProduct.price} per {selectedProduct.unit}
-                    </p>
+                    {selectedVariant ? (
+                      <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
+                        ₱{selectedVariant.price?.toFixed(2) || selectedProduct.price.toFixed(2)} per {selectedVariant.unit}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#3880ff' }}>
+                        ₱{selectedProduct.price} per {selectedProduct.unit}
+                      </p>
+                    )}
                   </div>
+                  
+                  {/* Size Selector - Show if variants available */}
+                  {productVariants.length > 0 && !loadingVariants && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <ProductSizeSelector
+                        variants={productVariants}
+                        selectedVariant={selectedVariant}
+                        onVariantSelect={handleVariantSelect}
+                        showLabel={true}
+                      />
+                    </div>
+                  )}
+                  
+                  {loadingVariants && (
+                    <div style={{ textAlign: 'center', padding: '10px', color: '#666' }}>
+                      <IonSpinner name="dots" /> Loading sizes...
+                    </div>
+                  )}
                   
                   <IonItem lines="none">
                     <IonLabel>Quantity</IonLabel>

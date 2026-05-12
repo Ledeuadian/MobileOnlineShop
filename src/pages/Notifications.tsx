@@ -136,35 +136,33 @@ const Notifications: React.FC = () => {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Mark as read
-    if (!notification.isRead) {
-      await supabase
-        .from('NOTIFICATIONS')
-        .update({ isRead: true })
-        .eq('notificationId', notification.notificationId);
-      
-      // Reload notifications
-      loadNotifications();
+    try {
+      if (!notification.isRead) {
+        await supabase
+          .from('NOTIFICATIONS')
+          .update({ isRead: true })
+          .eq('notificationId', notification.notificationId);
+        loadNotifications();
+      }
+      history.push(`/order-details/${notification.orderId}`);
+    } catch (error) {
+      console.error('Error handling notification click:', error);
     }
-
-    // Navigate to order details (you can create this page later)
-    history.push(`/order-details/${notification.orderId}`);
   };
 
   const handleClarificationClick = async (clarification: Clarification) => {
-    // Mark as read
-    if (!clarification.isRead) {
-      await supabase
-        .from('DTI_CLARIFICATIONS')
-        .update({ isRead: true })
-        .eq('clarificationId', clarification.clarificationId);
-      
-      // Reload notifications
-      loadNotifications();
+    try {
+      if (!clarification.isRead) {
+        await supabase
+          .from('DTI_CLARIFICATIONS')
+          .update({ isRead: true })
+          .eq('clarificationId', clarification.clarificationId);
+        loadNotifications();
+      }
+      history.push(`/clarification-details/${clarification.clarificationId}`);
+    } catch (error) {
+      console.error('Error handling clarification click:', error);
     }
-    
-    // Navigate to clarification details page
-    history.push(`/clarification-details/${clarification.clarificationId}`);
   };
 
   const getTimeAgo = (timestamp: string) => {

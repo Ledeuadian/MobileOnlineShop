@@ -19,7 +19,7 @@
   --indicator-color: #2d8f9c;
   --indicator-color-checked: #2d8f9c;
   --color: #666;
-  --color-checked: white !important;
+  --color-checked: #222 !important;
   --border-radius: 24px;
   min-height: 40px;
   font-weight: 600;
@@ -30,7 +30,8 @@
 }
 
 .filter-segment ion-segment-button.segment-button-checked {
-  color: white !important;
+  color: #222 !important;
+  font-weight: 700;
 }
 
 .filter-segment ion-segment-button ion-label {

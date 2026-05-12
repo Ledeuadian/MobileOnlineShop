@@ -33,6 +33,7 @@ interface GroceryItem {
   brand?: string;
   variant?: string;
   unit?: string;
+  quantity: number;
   checked: boolean;
   productTypeId?: number; // Add productTypeId for database matching
 }
@@ -52,6 +53,7 @@ interface StoreItem {
 interface StoreResult {
   storeId: number;
   storeName: string;
+  location?: string; // Full address of the store
   totalItems: number;
   availableItems: number;
   matchedItems: StoreItem[];
@@ -84,7 +86,7 @@ const GroceryStoreResults: React.FC = () => {
         : null;
       
       if (storeItem && storeItem.availability > 0) {
-        total += storeItem.price;
+        total += storeItem.price * (selectedItem.quantity || 1);
       }
     });
     return total;
@@ -108,7 +110,7 @@ const GroceryStoreResults: React.FC = () => {
         const srpPrice = srpPrices[productTypeId];
         const storePrice = storeItem.price;
         // Calculate savings: SRP Price - Store Price (positive = saving money)
-        const itemSavings = srpPrice - storePrice;
+        const itemSavings = (srpPrice - storePrice) * (selectedItem.quantity || 1);
         if (itemSavings > 0) {
           savings += itemSavings;
         }
@@ -134,7 +136,7 @@ const GroceryStoreResults: React.FC = () => {
             name: selectedItem.name,
             description: storeItem.description,
             price: storeItem.price,
-            quantity: 1
+            quantity: selectedItem.quantity || 1
           };
         }
         return null;
@@ -157,10 +159,10 @@ const GroceryStoreResults: React.FC = () => {
       setLoading(true);
       console.log('Searching stores for selected items:', selectedItems);
 
-      // Get all stores
+      // Get all stores with location and name data
       const { data: stores, error: storesError } = await supabase
         .from('GROCERY_STORE')
-        .select('storeId')
+        .select('storeId, name, latitude, longitude, location')
         .order('storeId');
 
       if (storesError) {
@@ -238,7 +240,8 @@ const GroceryStoreResults: React.FC = () => {
       stores?.forEach(store => {
         storeResultsMap[store.storeId] = {
           storeId: store.storeId,
-          storeName: `Store ${store.storeId}`, // Default name, can be enhanced later
+          storeName: store.name || `Store ${store.storeId}`,
+          location: store.location || undefined,
           totalItems: 0,
           availableItems: 0,
           matchedItems: [],
@@ -291,58 +294,54 @@ const GroceryStoreResults: React.FC = () => {
       let results = baseResults;
       try {
         console.log('Getting current location for KNN distance calculations...');
-        const userLocation = await LocationService.getCurrentPosition();
+        const userLocation = await LocationService.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0 // Always get fresh location
+        });
         
         if (userLocation) {
           console.log('Current user location:', userLocation);
+          console.log('Location accuracy:', userLocation.accuracy, 'meters');
           
-          // Get store owner users (userTypeCode = 2) who represent stores
-          const { data: storeOwners, error: ownersError } = await supabase
-            .from('USER')
-            .select('userId, userTypeCode, latitude, longitude')
-            .eq('userTypeCode', 2)
-            .not('latitude', 'is', null)
-            .not('longitude', 'is', null);
-
-          if (ownersError) {
-            console.warn('Error fetching store owners for distance calculation:', ownersError);
-          } else if (storeOwners && storeOwners.length > 0) {
-            console.log(`Found ${storeOwners.length} store owners with locations`);
-            
-            // Calculate distances to all store owners
-            const storeDistances = storeOwners.map(owner => ({
-              userId: owner.userId,
-              userTypeCode: owner.userTypeCode,
-              latitude: owner.latitude,
-              longitude: owner.longitude,
-              distance: KNNService.calculateDistance(
-                userLocation.latitude, 
-                userLocation.longitude, 
-                owner.latitude, 
-                owner.longitude
-              )
-            }));
-
-            console.log('Store distances calculated:', storeDistances);
-
-            // Enhanced results with distance information
-            results = baseResults.map(store => {
-              // For now, assign random store owner to demonstrate distance calculation
-              // In a real system, you'd have a mapping between store IDs and store owners
-              const randomStoreOwner = storeDistances[store.storeId % storeDistances.length];
-              const distance = randomStoreOwner?.distance || 999;
-              const maxDistance = 50; // Maximum reasonable distance in km
-              const distanceScore = Math.max(0, 100 - (distance / maxDistance) * 100);
-
-              return {
-                ...store,
-                distance,
-                distanceScore
-              };
-            });
-
-            console.log('Results with distance calculations:', results);
+          // Check if location accuracy is acceptable
+          if (userLocation.accuracy && !KNNService.isAccuracyAcceptable(userLocation.accuracy)) {
+            console.warn('⚠️ Location accuracy is poor (${userLocation.accuracy}m). Distance calculations may be inaccurate.');
           }
+          
+          // Build a lookup map of storeId -> real coordinates from already-fetched stores
+          const storeLocationMap: { [storeId: number]: { latitude: number; longitude: number } } = {};
+          stores?.forEach(store => {
+            if (store.latitude != null && store.longitude != null) {
+              storeLocationMap[store.storeId] = { latitude: store.latitude, longitude: store.longitude };
+            }
+          });
+
+          // Calculate real distances using actual store coordinates
+          results = baseResults.map(store => {
+            const storeCoords = storeLocationMap[store.storeId];
+            if (!storeCoords) {
+              return { ...store, distance: undefined, distanceScore: 0 };
+            }
+            
+            // Calculate distance with confidence info
+            const distanceResult = KNNService.calculateDistanceWithConfidence(
+              userLocation.latitude,
+              userLocation.longitude,
+              storeCoords.latitude,
+              storeCoords.longitude,
+              userLocation.accuracy
+            );
+            
+            const maxDistance = 50;
+            const distanceScore = Math.max(0, 100 - (distanceResult.distance / maxDistance) * 100);
+            
+            console.log(`Store ${store.storeId}: ${KNNService.formatDistance(distanceResult.distance)} (confidence: ${distanceResult.confidence})`);
+            
+            return { ...store, distance: distanceResult.distance, distanceScore };
+          });
+
+          console.log('Results with real distance calculations:', results);
         } else {
           console.warn('Could not get user location for distance calculations');
         }
@@ -478,13 +477,16 @@ const GroceryStoreResults: React.FC = () => {
                               <div>
                                 <IonCardTitle>{store.storeName}</IonCardTitle>
                                 <div className="store-rank">#{index + 1} Best Match</div>
+                                {store.location && (
+                                  <div className="store-address" style={{ display: 'flex', alignItems: 'flex-start', marginTop: '2px', color: '#555', fontSize: '0.78rem', lineHeight: '1.3' }}>
+                                    <IonIcon icon={locationOutline} style={{ fontSize: '0.85rem', marginRight: '3px', marginTop: '1px', flexShrink: 0, color: '#eb445a' }} />
+                                    <span>{store.location}</span>
+                                  </div>
+                                )}
                                 {store.distance !== undefined && (
-                                  <div className="store-distance">
-                                    <IonIcon icon={locationOutline} style={{ fontSize: '0.8rem', marginRight: '4px' }} />
-                                    {store.distance < 1 
-                                      ? `${Math.round(store.distance * 1000)}m away`
-                                      : `${store.distance.toFixed(1)}km away`
-                                    }
+                                  <div className="store-distance" style={{ display: 'flex', alignItems: 'center', marginTop: '3px', color: '#2d6b6b', fontSize: '0.8rem', fontWeight: '600' }}>
+                                    <span style={{ marginRight: '4px' }}>📍</span>
+                                    {KNNService.formatDistance(store.distance)}
                                   </div>
                                 )}
                               </div>
@@ -544,7 +546,12 @@ const GroceryStoreResults: React.FC = () => {
                                             )}
                                           </div>
                                           {storeItem && (
-                                            <span className="item-price">₱{storeItem.price.toFixed(2)}</span>
+                                            <span className="item-price">
+                                              {selectedItem.quantity > 1
+                                                ? `${selectedItem.quantity} × ₱${storeItem.price.toFixed(2)} = ₱${(storeItem.price * selectedItem.quantity).toFixed(2)}`
+                                                : `₱${storeItem.price.toFixed(2)}`
+                                              }
+                                            </span>
                                           )}
                                         </div>
                                         <div className="availability-status">
