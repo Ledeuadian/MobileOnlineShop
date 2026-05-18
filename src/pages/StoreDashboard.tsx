@@ -172,6 +172,11 @@ const StoreDashboard: React.FC = () => {
   const [suggestedProductTypes, setSuggestedProductTypes] = useState<ProductTypeSuggestion[]>([]);
   const [selectedProductTypeId, setSelectedProductTypeId] = useState<number | null>(null);
 
+  // Unit value state (e.g., 50 for "50ml")
+  const [unitValue, setUnitValue] = useState<string>('');
+  // Price input string state to allow decimal entry like 55.05
+  const [priceInput, setPriceInput] = useState<string>('');
+
   // Earnings states
   interface EarningRecord {
     earningId: number;
@@ -1186,10 +1191,14 @@ I'll automatically extract and save them for you!
       }
 
       const currentStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
+      // Combine unit value + unit type (e.g., "50" + "ml" = "50ml")
+      const combinedUnit = unitValue && newItem.unit ? `${unitValue}${newItem.unit}` : newItem.unit;
       const itemData = {
         ...newItem,
+        price: parseFloat(priceInput) || 0,
         storeId: currentStoreId,
-        productTypeId: productTypeId, // 🎯 Automatically set productTypeId
+        unit: combinedUnit,
+        productTypeId: productTypeId,
         updated_at: new Date().toISOString()
       };
 
@@ -1236,6 +1245,8 @@ I'll automatically extract and save them for you!
         brand: '',
         storeId: resetStoreId || 0
       });
+      setUnitValue('');
+      setPriceInput('');
       
       if (currentUser) {
         await loadStockItems(currentUser.id);
@@ -1273,6 +1284,15 @@ I'll automatically extract and save them for you!
   const openEditItem = (item: StockItem) => {
     setEditingItem(item);
     setNewItem({ ...item });
+    setPriceInput(item.price?.toString() || '');
+    // Parse unit value from existing unit string (e.g., "50ml" -> value="50", unit="ml")
+    const unitMatch = item.unit?.match(/^([0-9]*\.?[0-9]+)?(.*)$/);
+    if (unitMatch) {
+      setUnitValue(unitMatch[1] || '');
+      setNewItem({ ...item, unit: unitMatch[2] || item.unit || '' });
+    } else {
+      setUnitValue('');
+    }
     // Reset item image states but show existing image if available
     setSelectedItemImage(null);
     setItemImagePreview(item.item_image_url || null); // Show existing image as preview
@@ -1295,6 +1315,8 @@ I'll automatically extract and save them for you!
       brand: '',
       storeId: addItemStoreId || 0
     });
+    setUnitValue('');
+    setPriceInput('');
     // Reset item image states
     setSelectedItemImage(null);
     setItemImagePreview(null);
@@ -2439,17 +2461,27 @@ I'll automatically extract and save them for you!
                 <IonLabel position="stacked">Price (₱)</IonLabel>
                 <IonInput
                   type="number"
-                  value={newItem.price}
-                  onIonInput={(e) => setNewItem({...newItem, price: parseFloat(e.detail.value!) || 0})}
+                  step="0.01"
+                  value={priceInput}
+                  onIonInput={(e) => setPriceInput(e.detail.value!)}
                   placeholder="Enter price"
                 />
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Unit</IonLabel>
+                <IonLabel position="stacked">Unit Value</IonLabel>
+                <IonInput
+                  type="number"
+                  value={unitValue}
+                  onIonInput={(e) => setUnitValue(e.detail.value!)}
+                  placeholder="Enter unit value (e.g., 50)"
+                />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Unit Type</IonLabel>
                 <IonSelect
                   value={newItem.unit}
                   onIonChange={(e) => setNewItem({...newItem, unit: e.detail.value})}
-                  placeholder="Select unit"
+                  placeholder="Select unit type"
                   interface="popover"
                   fill="outline"
                 >

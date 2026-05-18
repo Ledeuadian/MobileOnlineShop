@@ -574,9 +574,11 @@ const GroceryStoreResults: React.FC = () => {
                                 <h4>Your Items in This Store:</h4>
                                 <div className="items-list">
                                   {selectedItems.map(selectedItem => {
-                                    // Find the best match by productTypeId
+                                    // Find the best match by productTypeId or storeItemId
                                     const matchingItems = store.matchedItems.filter(
-                                      item => item.productTypeId === selectedItem.productTypeId
+                                      item =>
+                                        (selectedItem.productTypeId && item.productTypeId === selectedItem.productTypeId) ||
+                                        (selectedItem.storeItemId && item.storeItemId === selectedItem.storeItemId)
                                     );
                                     
                                     // Prefer items with stock over out-of-stock items
