@@ -36,6 +36,7 @@ interface GroceryItem {
   quantity: number;
   checked: boolean;
   productTypeId?: number; // Add productTypeId for database matching
+  storeItemId?: number; // For custom items without productTypeId
 }
 
 interface StoreItem {
@@ -78,15 +79,29 @@ const GroceryStoreResults: React.FC = () => {
   const calculateStoreTotal = (store: StoreResult) => {
     let total = 0;
     selectedItems.forEach(selectedItem => {
-      const matchingItems = store.matchedItems.filter(
-        item => item.productTypeId === selectedItem.productTypeId
-      );
-      const storeItem = matchingItems.length > 0 
-        ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
-        : null;
+      // Handle items with productTypeId
+      if (selectedItem.productTypeId) {
+        const matchingItems = store.matchedItems.filter(
+          item => item.productTypeId === selectedItem.productTypeId
+        );
+        const storeItem = matchingItems.length > 0 
+          ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+          : null;
+        
+        if (storeItem && storeItem.availability > 0) {
+          total += storeItem.price * (selectedItem.quantity || 1);
+        }
+      }
       
-      if (storeItem && storeItem.availability > 0) {
-        total += storeItem.price * (selectedItem.quantity || 1);
+      // Handle custom items (items with storeItemId but no productTypeId)
+      if (selectedItem.storeItemId) {
+        const customItem = store.matchedItems.find(
+          item => item.storeItemId === selectedItem.storeItemId
+        );
+        
+        if (customItem && customItem.availability && customItem.availability > 0) {
+          total += customItem.price * (selectedItem.quantity || 1);
+        }
       }
     });
     return total;
@@ -123,22 +138,43 @@ const GroceryStoreResults: React.FC = () => {
     // Navigate to checkout page with store and item details
     const checkoutItems = selectedItems
       .map(selectedItem => {
-        const matchingItems = store.matchedItems.filter(
-          item => item.productTypeId === selectedItem.productTypeId
-        );
-        const storeItem = matchingItems.length > 0 
-          ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
-          : null;
-        
-        if (storeItem && storeItem.availability > 0) {
-          return {
-            id: storeItem.storeItemId, // Use storeItemId instead of selectedItem.id
-            name: selectedItem.name,
-            description: storeItem.description,
-            price: storeItem.price,
-            quantity: selectedItem.quantity || 1
-          };
+        // Handle items with productTypeId (standard products)
+        if (selectedItem.productTypeId) {
+          const matchingItems = store.matchedItems.filter(
+            item => item.productTypeId === selectedItem.productTypeId
+          );
+          const storeItem = matchingItems.length > 0 
+            ? matchingItems.find(item => item.availability && item.availability > 0) || matchingItems[0]
+            : null;
+          
+          if (storeItem && storeItem.availability > 0) {
+            return {
+              id: storeItem.storeItemId, // Use storeItemId instead of selectedItem.id
+              name: selectedItem.name,
+              description: storeItem.description,
+              price: storeItem.price,
+              quantity: selectedItem.quantity || 1
+            };
+          }
         }
+        
+        // Handle custom items (items with storeItemId but no productTypeId)
+        if (selectedItem.storeItemId) {
+          const customItem = store.matchedItems.find(
+            item => item.storeItemId === selectedItem.storeItemId
+          );
+          
+          if (customItem && customItem.availability && customItem.availability > 0) {
+            return {
+              id: customItem.storeItemId,
+              name: selectedItem.name,
+              description: customItem.description,
+              price: customItem.price,
+              quantity: selectedItem.quantity || 1
+            };
+          }
+        }
+        
         return null;
       })
       .filter(item => item !== null);
@@ -170,56 +206,65 @@ const GroceryStoreResults: React.FC = () => {
         return;
       }
 
-      // Get all items from ITEMS_IN_STORE for the selected product type IDs
+            // Get all items from ITEMS_IN_STORE for the selected product type IDs
       const selectedProductTypeIds = selectedItems
         .map(item => item.productTypeId)
         .filter(id => id !== undefined) as number[];
       
-      console.log('Searching for product type IDs:', selectedProductTypeIds);
+      // Get custom items (items with storeItemId but no productTypeId)
+      const selectedStoreItemIds = selectedItems
+        .map(item => item.storeItemId)
+        .filter(id => id !== undefined) as number[];
       
-      if (selectedProductTypeIds.length === 0) {
-        console.warn('No valid productTypeIds found in selected items');
+      console.log('Searching for product type IDs:', selectedProductTypeIds);
+      console.log('Searching for custom storeItemIds:', selectedStoreItemIds);
+      
+      let storeItems: any[] = [];
+      
+      // Query 1: Fetch items by productTypeId (standard products)
+      if (selectedProductTypeIds.length > 0) {
+        const { data: productTypeItems, error: productTypeError } = await supabase
+          .from('ITEMS_IN_STORE')
+          .select('*')
+          .in('productTypeId', selectedProductTypeIds);
+        
+        if (productTypeError) {
+          console.error('Error fetching store items by productTypeId:', productTypeError);
+        } else {
+          storeItems.push(...(productTypeItems || []));
+          console.log(`Found ${productTypeItems?.length || 0} items via productTypeId`);
+        }
+      }
+      
+      // Query 2: Fetch custom items by storeItemId (products without productTypeId)
+      if (selectedStoreItemIds.length > 0) {
+        const { data: customItems, error: customError } = await supabase
+          .from('ITEMS_IN_STORE')
+          .select('*')
+          .in('storeItemId', selectedStoreItemIds);
+        
+        if (customError) {
+          console.error('Error fetching custom store items:', customError);
+        } else {
+          storeItems.push(...(customItems || []));
+          console.log(`Found ${customItems?.length || 0} custom items via storeItemId`);
+        }
+      }
+      
+      // Remove duplicates based on storeItemId
+      const uniqueItems = new Map();
+      storeItems.forEach(item => {
+        if (!uniqueItems.has(item.storeItemId)) {
+          uniqueItems.set(item.storeItemId, item);
+        }
+      });
+      storeItems = Array.from(uniqueItems.values());
+
+      if (storeItems.length === 0) {
+        console.warn('No items found in ITEMS_IN_STORE matching productTypeIds or storeItemIds');
         setStoreResults([]);
         setLoading(false);
         return;
-      }
-      
-      // Try to query with productTypeId first
-      let storeItems = null;
-      let itemsError = null;
-      
-      // First attempt: Query by productTypeId
-      const queryResult = await supabase
-        .from('ITEMS_IN_STORE')
-        .select('*')
-        .in('productTypeId', selectedProductTypeIds);
-      
-      storeItems = queryResult.data;
-      itemsError = queryResult.error;
-
-      if (itemsError) {
-        console.error('Error fetching store items by productTypeId:', itemsError);
-        console.error('Error details:', JSON.stringify(itemsError, null, 2));
-        
-        // If productTypeId doesn't exist, try querying all items and filter by description
-        console.log('Attempting fallback: fetching all items and filtering by name...');
-        const fallbackResult = await supabase
-          .from('ITEMS_IN_STORE')
-          .select('*');
-        
-        if (fallbackResult.error) {
-          console.error('Fallback query also failed:', fallbackResult.error);
-          return;
-        }
-        
-        // Filter by matching description/name
-        const selectedNames = selectedItems.map(item => item.name.toLowerCase());
-        storeItems = fallbackResult.data?.filter(item => {
-          const itemDesc = (item.description || '').toLowerCase();
-          return selectedNames.some(name => itemDesc.includes(name));
-        }) || [];
-        
-        console.log('Fallback query found', storeItems.length, 'items');
       }
 
       console.log(`Found ${storeItems?.length || 0} matching items across stores`);
@@ -264,10 +309,20 @@ const GroceryStoreResults: React.FC = () => {
         const availableMatches = new Set<number>();
 
         store.matchedItems.forEach(item => {
-          uniqueMatches.add(item.productTypeId);
-          // Check if item is available (availability > 0 means in stock)
-          if (item.availability && item.availability > 0) {
-            availableMatches.add(item.productTypeId);
+          // Handle both productTypeId (standard products) and storeItemId (custom items)
+          if (item.productTypeId) {
+            uniqueMatches.add(item.productTypeId);
+            // Check if item is available (availability > 0 means in stock)
+            if (item.availability && item.availability > 0) {
+              availableMatches.add(item.productTypeId);
+            }
+          } else if (item.storeItemId) {
+            // Custom item - use storeItemId as the unique identifier
+            uniqueMatches.add(item.storeItemId);
+            // Check if item is available
+            if (item.availability && item.availability > 0) {
+              availableMatches.add(item.storeItemId);
+            }
           }
         });
 
@@ -501,13 +556,6 @@ const GroceryStoreResults: React.FC = () => {
                               <div className="score-label">
                                 {getAvailabilityText(store.availabilityScore)}
                               </div>
-                              {store.distance !== undefined && (
-                                <div className="distance-score">
-                                  <small style={{ color: '#666', fontSize: '0.7rem' }}>
-                                    Proximity: {Math.round(store.distanceScore)}%
-                                  </small>
-                                </div>
-                              )}
                             </div>
                           </div>
                         </IonCardHeader>

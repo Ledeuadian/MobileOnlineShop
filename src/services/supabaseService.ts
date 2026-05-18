@@ -101,7 +101,6 @@ export async function checkUserApprovalStatus(email: string) {
     return { error };
   }
   
-  console.log('User approval status:', data);
   return { data };
 }
 

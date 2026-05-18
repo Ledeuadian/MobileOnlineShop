@@ -1177,35 +1177,12 @@ I'll automatically extract and save them for you!
       }
 
       // 🎯 Determine Product Type ID (manual selection takes priority)
-      let productTypeId = selectedProductTypeId;
-
-      // If user didn't manually pick and we have suggestedProductTypes, pick the best-scoring one
-      if (!productTypeId && suggestedProductTypes && suggestedProductTypes.length > 0) {
-        const best = suggestedProductTypes.reduce((bestSoFar, cur) => {
-          return (cur.matchScore ?? 0) > (bestSoFar.matchScore ?? 0) ? cur : bestSoFar;
-        }, suggestedProductTypes[0]);
-        if (best?.productTypeId) {
-          productTypeId = best.productTypeId;
-          console.log('🔎 Auto-assigned productTypeId from suggestions:', productTypeId);
-        }
-      }
-
-      // Fallback to service-based matching if still not assigned
-      if (!productTypeId) {
-        console.log('🔍 No manual selection or suggestion, finding matching product type for:', newItem.name);
-        productTypeId = await ProductTypeMatchingService.findBestMatch({
-          name: newItem.name,
-          brand: newItem.brand || '',
-          category: newItem.category,
-          unit: newItem.unit || '',
-          description: newItem.description
-        });
-      }
+      const productTypeId = selectedProductTypeId;
 
       if (productTypeId) {
         console.log('✅ Product Type ID assigned:', productTypeId);
       } else {
-        console.log('⚠️ No matching product type found - item will be saved without productTypeId');
+        console.log('⚠️ No product type selected - item will be saved without productTypeId');
       }
 
       const currentStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
@@ -1240,7 +1217,7 @@ I'll automatically extract and save them for you!
         throw result.error;
       }
 
-      const messageSuffix = productTypeId ? ' (Auto-matched with standard product type)' : ' (No standard product type found)';
+      const messageSuffix = productTypeId ? ' (Linked to standard product type)' : ' (No standard product type selected)';
       const successMessage = editingItem ? 'Item updated successfully!' : `Item added successfully!${messageSuffix}`;
       
       setAlertMessage(successMessage);
@@ -1986,8 +1963,8 @@ I'll automatically extract and save them for you!
                   <IonLabel position="stacked">BIR Permit</IonLabel>
                   <IonInput
                     value={storeInfo.bir_permit || ''}
-                    onIonInput={(e) => setStoreInfo({...storeInfo, bir_permit: e.detail.value!})}
-                    placeholder="Enter BIR Permit number"
+                    readonly
+                    placeholder="BIR Permit number (auto-filled)"
                   />
                 </IonItem>
                 
@@ -1995,8 +1972,8 @@ I'll automatically extract and save them for you!
                   <IonLabel position="stacked">DTI Permit</IonLabel>
                   <IonInput
                     value={storeInfo.dti_permit || ''}
-                    onIonInput={(e) => setStoreInfo({...storeInfo, dti_permit: e.detail.value!})}
-                    placeholder="Enter DTI Permit number"
+                    readonly
+                    placeholder="DTI Permit number (auto-filled)"
                   />
                 </IonItem>
               </div>
@@ -2523,11 +2500,11 @@ I'll automatically extract and save them for you!
                   <IonSelect
                     value={selectedProductTypeId ?? ''}
                     onIonChange={(e) => setSelectedProductTypeId(e.detail.value === '' ? null : e.detail.value)}
-                    placeholder="None (Auto-select best match)"
+                    placeholder="None"
                     interface="popover"
                     fill="outline"
                   >
-                    <IonSelectOption value="">None (Auto-select best match)</IonSelectOption>
+                    <IonSelectOption value="">None</IonSelectOption>
                     {suggestedProductTypes.map((product: ProductTypeSuggestion) => (
                       <IonSelectOption key={product.productTypeId} value={product.productTypeId}>
                         {product.Name} - {product.Brand} ({product.Unit}) {product.matchScore && `- ${Math.round(product.matchScore * 100)}% match`}

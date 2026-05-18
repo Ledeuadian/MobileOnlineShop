@@ -425,6 +425,17 @@
   color: #2c5282;
 }
 
+.srp-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.srp-action-buttons ion-button {
+  --padding-start: 0.75rem;
+  --padding-end: 0.75rem;
+}
+
 .srp-price-input {
   --background: #fff;
   --border-color: #e2e8f0;
@@ -517,5 +528,10 @@ ion-badge[color="secondary"] {
   .srp-price-info {
     flex-wrap: wrap;
     gap: 4px;
+  }
+  
+  .srp-action-buttons {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

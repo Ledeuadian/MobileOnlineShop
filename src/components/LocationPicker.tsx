@@ -73,33 +73,43 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   ]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Get user's current location when modal opens
+  // Get user's current device location when modal opens (not saved coordinates)
   useEffect(() => {
-    if (isOpen && !initialPosition) {
+    if (isOpen) {
       setIsLoading(true);
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const { latitude, longitude } = pos.coords;
             setMapCenter([latitude, longitude]);
+            setPosition({ lat: latitude, lng: longitude });
             setIsLoading(false);
           },
           (error) => {
             console.log('Geolocation error:', error);
             setIsLoading(false);
-            // Keep default location (Manila)
+            // Fall back to initialPosition or default location (Manila)
+            if (initialPosition) {
+              setMapCenter([initialPosition.lat, initialPosition.lng]);
+              setPosition(initialPosition);
+            }
           },
           {
             enableHighAccuracy: true,
             timeout: 10000,
-            maximumAge: 300000
+            maximumAge: 0
           }
         );
       } else {
         setIsLoading(false);
+        // Fall back to initialPosition or default location
+        if (initialPosition) {
+          setMapCenter([initialPosition.lat, initialPosition.lng]);
+          setPosition(initialPosition);
+        }
       }
     }
-  }, [isOpen, initialPosition]);
+  }, [isOpen]);
 
   const handleSaveLocation = () => {
     if (position) {

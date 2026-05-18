@@ -84,17 +84,14 @@ import IdleTimeoutWarning from './components/IdleTimeoutWarning';
 setupIonicReact();
 
 const RedirectHandler: React.FC = () => {
-  console.log('RedirectHandler called');
   const history = useHistory();
   
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        console.log('Checking authentication in RedirectHandler...');
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user?.email) {
-          console.log('User is authenticated, checking profile...');
           // Check user approval status
           const approvalResult = await checkUserApprovalStatus(session.user.email);
             
@@ -104,28 +101,19 @@ const RedirectHandler: React.FC = () => {
             return;
           }
           
-          console.log('User profile:', approvalResult.data);
-          
           // Check if user is pending approval
           if (approvalResult?.data?.approval_status === 'pending') {
-            console.log('User is pending approval, redirecting to pending page');
             history.push('/pending-approval');
           } else if (approvalResult?.data?.userTypeCode === 1 && approvalResult.data.approval_status === 'approved') {
-            console.log('Redirecting to admin dashboard');
             history.push('/admin-dashboard');
           } else if (approvalResult?.data?.userTypeCode === 2 && approvalResult.data.approval_status === 'approved') {
-            console.log('Redirecting to DTI dashboard');
             history.push('/dti-dashboard');
           } else if (approvalResult?.data?.userTypeCode === 3 && approvalResult.data.approval_status === 'approved') {
-            console.log('Redirecting to store dashboard');
             history.push('/store-dashboard');
           } else {
-            console.log('Redirecting to grocery list');
             history.push('/grocery-list');
           }
         } else {
-          console.log('No authenticated user, redirecting to login');
-          console.log('History object:', history);
           history.push('/login');
         }
       } catch (error) {
@@ -696,7 +684,6 @@ const ProtectedNearbyUsersRoute: React.FC = () => {
 
         setCurrentUserId(userData.userId);
         setIsAuthorized(true);
-        console.log('🟢 User authorized for nearby users feature:', session.user.email);
       } catch (error) {
         console.error('Error checking nearby users authorization:', error);
         history.push('/login');
@@ -756,12 +743,9 @@ const ProtectedHomeRoute: React.FC = () => {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session?.user?.email) {
-          console.log('🔴 No session found, redirecting to login');
           history.push('/login');
           return;
         }
-
-        console.log('🟢 Session found for Home route:', session.user.email);
         
         // Check user approval status and userTypeCode
         const approvalResult = await checkUserApprovalStatus(session.user.email);
@@ -774,28 +758,24 @@ const ProtectedHomeRoute: React.FC = () => {
         
         // Check if user is DTI (userTypeCode === 2) - they should not access /home
         if (approvalResult?.data?.userTypeCode === 2) {
-          console.log('🔒 DTI user attempting to access /home, redirecting to /dti-dashboard');
           history.push('/dti-dashboard');
           return;
         }
         
         // Check if user is Admin (userTypeCode === 1) - they should not access /home
         if (approvalResult?.data?.userTypeCode === 1) {
-          console.log('🔒 Admin user attempting to access /home, redirecting to /admin-dashboard');
           history.push('/admin-dashboard');
           return;
         }
         
         // Check if user is Store (userTypeCode === 3) - they should not access /home
         if (approvalResult?.data?.userTypeCode === 3) {
-          console.log('🔒 Store user attempting to access /home, redirecting to /store-dashboard');
           history.push('/store-dashboard');
           return;
         }
         
         // If user is pending approval, redirect to pending page
         if (approvalResult?.data?.approval_status === 'pending') {
-          console.log('🟡 User is pending approval, redirecting to pending page');
           history.push('/pending-approval');
           return;
         }
@@ -861,12 +841,10 @@ const ProtectedCategoryRoute: React.FC = () => {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session?.user?.email) {
-          console.log('🔴 No session found, redirecting to login');
           history.push('/login');
           return;
         }
 
-        console.log('🟢 Session found for Category route:', session.user.email);
         setIsAuthorized(true);
       } catch (error) {
         console.error('❌ Error checking category authorization:', error);
@@ -1181,13 +1159,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkLocationRequirement = async () => {
       try {
-        console.log('📍 Checking location requirements on app start...');
         const isReady = await LocationRequirementService.isLocationReady();
-        console.log('📍 Location ready status:', isReady);
-        
         setIsLocationReady(isReady);
       } catch (error) {
-        console.error('❌ Error checking location requirements:', error);
+        console.error('Error checking location requirements:', error);
         setIsLocationReady(false);
       } finally {
         setIsLocationChecking(false);
@@ -1351,19 +1326,9 @@ const App: React.FC = () => {
     const checkInitialSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          console.log('🟢 Active session detected on app start:', {
-            user_id: session.user.id,
-            email: session.user.email,
-            expires_at: new Date(session.expires_at! * 1000).toLocaleString(),
-            access_token: session.access_token.substring(0, 20) + '...',
-            refresh_token: session.refresh_token?.substring(0, 20) + '...' || 'N/A'
-          });
-        } else {
-          console.log('🔴 No active session on app start');
-        }
+        // Session check on app start
       } catch (error) {
-        console.error('❌ Error checking initial session:', error);
+        console.error('Error checking initial session:', error);
       }
     };
 
@@ -1371,33 +1336,16 @@ const App: React.FC = () => {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔄 Auth state changed:', event);
-      
-      if (session) {
-        console.log('🟢 Active session:', {
-          event: event,
-          user_id: session.user.id,
-          email: session.user.email,
-          expires_at: new Date(session.expires_at! * 1000).toLocaleString(),
-          access_token: session.access_token.substring(0, 20) + '...',
-          refresh_token: session.refresh_token?.substring(0, 20) + '...' || 'N/A',
-          user_metadata: session.user.user_metadata,
-          app_metadata: session.user.app_metadata
-        });
-      } else {
-        console.log('🔴 No active session (user logged out or session expired)');
-      }
+      // Auth state change handled
     });
 
     // Cleanup subscription on unmount
     return () => {
-      console.log('🧹 Cleaning up global session monitor');
       subscription.unsubscribe();
     };
   }, []);
 
   const handleLocationReady = () => {
-    console.log('✅ Location requirements satisfied, proceeding to app');
     setIsLocationReady(true);
   };
 

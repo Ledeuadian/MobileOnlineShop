@@ -26,7 +26,8 @@ import {
   IonCardSubtitle,
   IonInput,
   IonSearchbar,
-  IonToast
+  IonToast,
+  IonAlert
 } from '@ionic/react';
 import {
   analyticsOutline,
@@ -43,7 +44,8 @@ import {
   bagOutline,
   saveOutline,
   listOutline,
-  timeOutline
+  timeOutline,
+  trashOutline
 } from 'ionicons/icons';
 import { supabase } from '../services/supabaseService';
 import ProfileMenu from '../components/ProfileMenu';
@@ -149,6 +151,11 @@ const DTIDashboard: React.FC = () => {
   const [newProductVariant, setNewProductVariant] = useState('');
   const [newProductUnit, setNewProductUnit] = useState('');
   const [isSubmittingNewProduct, setIsSubmittingNewProduct] = useState(false);
+
+  // State for Delete Product functionality
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<ProductType | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Helper function to get SRP price for a productTypeId
   const getSRPPrice = (productTypeId: number | undefined | null): number | null => {
@@ -425,7 +432,6 @@ const DTIDashboard: React.FC = () => {
           });
           setSrpPrices(initialPrices);
         } else if (srpData) {
-          console.log('SRP data loaded from database:', srpData);
           // Load actual SRP prices from database
           const srpMap: {[key: number]: number} = {};
           uniqueProducts.forEach(product => {
@@ -433,11 +439,9 @@ const DTIDashboard: React.FC = () => {
           });
           
           srpData.forEach(srp => {
-            console.log(`SRP mapping: productTypeId ${srp.productTypeId} -> Price ${srp.Price}`);
             srpMap[srp.productTypeId] = srp.Price;
           });
           
-          console.log('Final SRP price map:', srpMap);
           setSrpPrices(srpMap);
         }
       }
@@ -525,7 +529,7 @@ const DTIDashboard: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('PRODUCT_TYPE')
-        .select('ProductTypeId')
+        .select('productTypeId')
         .eq('Name', name)
         .eq('Brand', brand)
         .eq('Variant', variant)
@@ -646,6 +650,103 @@ const DTIDashboard: React.FC = () => {
       setShowToast(true);
     } finally {
       setIsSubmittingNewProduct(false);
+    }
+  };
+
+  // Delete Product Functions
+  const openDeleteProductModal = (product: ProductType) => {
+    setProductToDelete(product);
+    setIsDeleteModalOpen(true);
+  };
+
+  const closeDeleteProductModal = () => {
+    setIsDeleteModalOpen(false);
+    setProductToDelete(null);
+  };
+
+  const deleteProduct = async () => {
+    if (!productToDelete) {
+      return;
+    }
+
+    try {
+      setIsDeletingProduct(true);
+
+      // Check if product is being used in any store inventory
+      const { data: usageData, error: usageError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('storeItemId, name')
+        .eq('productTypeId', productToDelete.productTypeId)
+        .limit(1);
+
+      if (usageError) {
+        console.error('Error checking product usage:', usageError);
+      }
+
+      // If product is used in stores, notify the user
+      if (usageData && usageData.length > 0) {
+        setToastMessage(`Cannot delete "${productToDelete.Name}" - it is being used by stores. Consider setting SRP price to 0 instead.`);
+        setShowToast(true);
+        closeDeleteProductModal();
+        setIsDeletingProduct(false);
+        return;
+      }
+      
+      // Delete from SRP table first (foreign key constraint)
+      await supabase
+        .from('SRP')
+        .delete()
+        .eq('productTypeId', productToDelete.productTypeId);
+
+      // Delete from PRODUCT_TYPE table
+      const { error: productDeleteError } = await supabase
+        .from('PRODUCT_TYPE')
+        .delete()
+        .eq('productTypeId', productToDelete.productTypeId);
+
+      if (productDeleteError) {
+        throw productDeleteError;
+      }
+
+      // Update local state
+      setProductTypes(prev => prev.filter(p => p.productTypeId !== productToDelete.productTypeId));
+      
+      // Remove from SRP prices state
+      setSrpPrices(prev => {
+        const updated = { ...prev };
+        delete updated[productToDelete.productTypeId];
+        return updated;
+      });
+
+      setToastMessage(`Product "${productToDelete.Name}" deleted successfully`);
+      setShowToast(true);
+      closeDeleteProductModal();
+
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      // Handle Supabase error object
+      let errorMessage = 'Unknown error';
+      if (error && typeof error === 'object') {
+        const supabaseError = error as { message?: string; details?: string; hint?: string; code?: string };
+        if (supabaseError.code) {
+          errorMessage = `Database error (${supabaseError.code}): ${supabaseError.message || supabaseError.details || 'Unknown'}`;
+        } else if (supabaseError.message) {
+          errorMessage = supabaseError.message;
+        } else if (supabaseError.details) {
+          errorMessage = supabaseError.details;
+        } else if (supabaseError.hint) {
+          errorMessage = supabaseError.hint;
+        } else {
+          // Try to stringify for debugging
+          errorMessage = JSON.stringify(error);
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      setToastMessage(`Error deleting product: ${errorMessage}. Check if RLS policies allow delete.`);
+      setShowToast(true);
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
@@ -1294,20 +1395,31 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                           className="srp-price-input"
                         />
                       </div>
-                      <IonButton
-                        size="small"
-                        fill="solid"
-                        color="primary"
-                        onClick={() => {
-                          const input = document.querySelector(`ion-input[value="${srpPrices[product.productTypeId] || ''}"]`) as HTMLIonInputElement;
-                          if (input) {
-                            input.getInputElement().then(element => element.focus());
-                          }
-                        }}
-                      >
-                        <IonIcon icon={saveOutline} slot="start" />
-                        Update
-                      </IonButton>
+                      <div className="srp-action-buttons">
+                        <IonButton
+                          size="small"
+                          fill="solid"
+                          color="primary"
+                          onClick={() => {
+                            const input = document.querySelector(`ion-input[value="${srpPrices[product.productTypeId] || ''}"]`) as HTMLIonInputElement;
+                            if (input) {
+                              input.getInputElement().then(element => element.focus());
+                            }
+                          }}
+                        >
+                          <IonIcon icon={saveOutline} slot="start" />
+                          Update
+                        </IonButton>
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="danger"
+                          onClick={() => openDeleteProductModal(product)}
+                        >
+                          <IonIcon icon={trashOutline} slot="start" />
+                          Delete
+                        </IonButton>
+                      </div>
                     </div>
                   </div>
                 </IonCardContent>
@@ -2231,6 +2343,30 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
         message={toastMessage}
         duration={3000}
         position="bottom"
+      />
+
+      {/* Delete Product Confirmation Modal */}
+      <IonAlert
+        isOpen={isDeleteModalOpen}
+        onDidDismiss={closeDeleteProductModal}
+        header="Delete Product"
+        message={`Are you sure you want to delete "${productToDelete?.Name}"? This action cannot be undone.`}
+        buttons={[
+          {
+            text: 'Cancel',
+            role: 'cancel',
+            handler: () => {
+              closeDeleteProductModal();
+            }
+          },
+          {
+            text: 'Delete',
+            role: 'destructive',
+            handler: () => {
+              deleteProduct();
+            }
+          }
+        ]}
       />
     </IonPage>
   );

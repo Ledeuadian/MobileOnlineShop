@@ -40,6 +40,7 @@ interface GroceryItem {
   checked: boolean;
   showingDelete?: boolean;
   productTypeId?: number; // Add productTypeId to preserve database reference
+  storeItemId?: number; // For custom items without productTypeId
 }
 
 const GroceryList: React.FC = () => {
@@ -211,6 +212,51 @@ const GroceryList: React.FC = () => {
         };
       });
 
+      // Step 4: Fetch items from ITEMS_IN_STORE that don't have a productTypeId
+      // These are "custom" products added by stores that don't match any standard product type
+      const { data: customItems, error: customError } = await supabase
+        .from('ITEMS_IN_STORE')
+        .select('storeItemId, name, description, brand, unit, category')
+        .is('productTypeId', null)
+        .not('availability', 'is', null)
+        .gt('availability', 0);
+
+      if (customError) {
+        console.error('Error fetching custom items:', customError);
+      }
+
+      if (customItems && customItems.length > 0) {
+        console.log(`Found ${customItems.length} custom items without productTypeId`);
+        
+        // Remove duplicates based on name, brand, unit combination
+        const uniqueCustomItems = customItems.filter((item, index, self) => 
+          index === self.findIndex(i => 
+            i.name === item.name && 
+            i.brand === item.brand && 
+            i.unit === item.unit
+          )
+        );
+
+        console.log(`After deduplication: ${uniqueCustomItems.length} unique custom items`);
+
+        // Add custom items to the list with negative IDs to distinguish them
+        const customFormattedItems: GroceryItem[] = uniqueCustomItems.map((item, index) => ({
+          id: -(index + 1), // Negative ID to indicate custom item (no productTypeId)
+          productTypeId: undefined, // No productTypeId for custom items
+          storeItemId: item.storeItemId, // Store the actual storeItemId for purchasing
+          name: item.name,
+          brand: item.brand || undefined,
+          variant: undefined,
+          unit: item.unit || undefined,
+          quantity: 1,
+          checked: false
+        }));
+
+        // Combine standard products with custom items
+        formattedItems.push(...customFormattedItems);
+        console.log('Added custom items to grocery list:', customFormattedItems.map(i => i.name));
+      }
+
       console.log('Final formatted items:', formattedItems.map(i => ({ 
         id: i.id, 
         productTypeId: i.productTypeId, 
@@ -373,11 +419,34 @@ const GroceryList: React.FC = () => {
 
   const deleteItem = (id: number, event: React.MouseEvent) => {
     event.stopPropagation();
-    setGroceryItems(prevItems =>
-      prevItems.map(item =>
+    
+    // Capture the productTypeId BEFORE state update (state is async)
+    const itemToDelete = groceryItems.find(item => item.id === id);
+    const deletedProductTypeId = itemToDelete?.productTypeId;
+    
+    setGroceryItems(prevItems => {
+      const newItems = prevItems.map(item =>
         item.id === id ? { ...item, checked: false, showingDelete: false } : item
-      )
-    );
+      );
+      
+      // Update localStorage after state change
+      setTimeout(() => {
+        if (deletedProductTypeId) {
+          try {
+            const saved = localStorage.getItem('groceryListSelections');
+            if (saved) {
+              const selections: number[] = JSON.parse(saved);
+              const updatedSelections = selections.filter(pid => pid !== deletedProductTypeId);
+              localStorage.setItem('groceryListSelections', JSON.stringify(updatedSelections));
+            }
+          } catch (error) {
+            console.error('Error updating localStorage after delete:', error);
+          }
+        }
+      }, 0);
+      
+      return newItems;
+    });
   };
 
   const handleTouchStart = (e: React.TouchEvent, id: number) => {
