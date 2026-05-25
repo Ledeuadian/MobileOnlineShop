@@ -7,9 +7,6 @@ import {
   IonContent,
   IonCard,
   IonCardContent,
-  IonGrid,
-  IonRow,
-  IonCol,
   IonIcon,
   IonButton,
   IonSegment,
@@ -30,12 +27,8 @@ import {
   IonAlert
 } from '@ionic/react';
 import {
-  analyticsOutline,
   storefrontOutline,
-  trendingUpOutline,
   eyeOutline,
-  cartOutline,
-  pricetagOutline,
   logOutOutline,
   refreshOutline,
   close,
@@ -50,13 +43,6 @@ import {
 import { supabase } from '../services/supabaseService';
 import ProfileMenu from '../components/ProfileMenu';
 import './DTIDashboard.css';
-
-interface DTIStats {
-  totalStores: number;
-  totalItems: number;
-  avgPriceRange: string;
-  monthlyTransactions: number;
-}
 
 interface StoreData {
   storeId: number;
@@ -107,14 +93,8 @@ interface ProductType {
 // Interface for raw PRODUCT_TYPE database records - removed as no longer needed
 
 const DTIDashboard: React.FC = () => {
-  const [selectedSegment, setSelectedSegment] = useState<string>('analytics');
+  const [selectedSegment, setSelectedSegment] = useState<string>('stores');
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<DTIStats>({
-    totalStores: 0,
-    totalItems: 0,
-    avgPriceRange: 'N/A',
-    monthlyTransactions: 0
-  });
   const [storesData, setStoresData] = useState<StoreData[]>([]);
   const [selectedStore, setSelectedStore] = useState<StoreDetails | null>(null);
   const [storeItems, setStoreItems] = useState<StoreItem[]>([]);
@@ -207,140 +187,21 @@ const DTIDashboard: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  const loadDashboardStats = async () => {
-    try {
-      // Get total number of stores
-      const { count: storeCount } = await supabase
-        .from('GROCERY_STORE')
-        .select('*', { count: 'exact', head: true });
-
-      // Get total number of items
-      const { count: itemCount } = await supabase
-        .from('ITEMS_IN_STORE')
-        .select('*', { count: 'exact', head: true });
-
-      // Get price range (min and max prices)
-      const { data: priceData } = await supabase
-        .from('ITEMS_IN_STORE')
-        .select('price')
-        .order('price', { ascending: true });
-
-      let avgPriceRange = 'N/A';
-      if (priceData && priceData.length > 0) {
-        const minPrice = priceData[0].price;
-        const maxPrice = priceData[priceData.length - 1].price;
-        avgPriceRange = `₱${minPrice.toFixed(2)} - ₱${maxPrice.toFixed(2)}`;
-      }
-
-      // Calculate monthly reports (using total items as a proxy for now)
-      const monthlyReports = itemCount ? Math.floor(itemCount * 12.3) : 0;
-
-      setStats({
-        totalStores: storeCount || 0,
-        totalItems: itemCount || 0,
-        avgPriceRange,
-        monthlyTransactions: monthlyReports
-      });
-    } catch (error) {
-      console.error('Error loading dashboard stats:', error);
-      // Fallback to default values on error
-      setStats({
-        totalStores: 0,
-        totalItems: 0,
-        avgPriceRange: 'N/A',
-        monthlyTransactions: 0
-      });
-    }
-  };
-
   const loadStoreAnalytics = async () => {
     try {
-      console.log('🏪 Loading store analytics...');
-      
       // Get all stores first - DTI should have access to all stores
-      // Temporarily bypass RLS by using service role for DTI monitoring
       const { data: storesData, error: storesError } = await supabase
         .from('GROCERY_STORE')
-        .select('storeId, name, storeDescription, location, store_phone, store_email');
-
-      console.log('🔍 Supabase query result:', { storesData, storesError });
+        .select('*');
 
       if (storesError) {
-        console.error('❌ Error fetching stores:', storesError);
-        console.log('📝 Error details:', JSON.stringify(storesError, null, 2));
-        
-        // For testing, let's create some mock data
-        console.log('🧪 Creating mock data for testing...');
-        const mockStores: StoreData[] = [
-          {
-            storeId: 1,
-            storeName: 'Metro Grocery Store',
-            itemCount: 15,
-            avgPrice: 35.75,
-            status: 'Active'
-          },
-          {
-            storeId: 2,
-            storeName: 'Fresh Market Philippines',
-            itemCount: 8,
-            avgPrice: 22.50,
-            status: 'Active'
-          },
-          {
-            storeId: 3,
-            storeName: 'Local Sari-Sari Store',
-            itemCount: 0,
-            avgPrice: 0,
-            status: 'Under Review'
-          },
-          {
-            storeId: 4,
-            storeName: 'Super Value Mart',
-            itemCount: 25,
-            avgPrice: 45.25,
-            status: 'Active'
-          }
-        ];
-        setStoresData(mockStores);
+        console.error('Error fetching stores:', storesError);
+        setStoresData([]);
         return;
       }
 
-      console.log('📊 Found stores:', storesData?.length || 0);
-
-      // If no stores found due to RLS, show mock data for DTI demo
       if (!storesData || storesData.length === 0) {
-        console.log('🧪 No stores found, using mock data for DTI demonstration...');
-        const mockStores: StoreData[] = [
-          {
-            storeId: 1,
-            storeName: 'Metro Grocery Store',
-            itemCount: 15,
-            avgPrice: 35.75,
-            status: 'Active'
-          },
-          {
-            storeId: 2,
-            storeName: 'Fresh Market Philippines',
-            itemCount: 8,
-            avgPrice: 22.50,
-            status: 'Active'
-          },
-          {
-            storeId: 3,
-            storeName: 'Local Sari-Sari Store',
-            itemCount: 0,
-            avgPrice: 0,
-            status: 'Under Review'
-          },
-          {
-            storeId: 4,
-            storeName: 'Super Value Mart',
-            itemCount: 25,
-            avgPrice: 45.25,
-            status: 'Active'
-          }
-        ];
-        setStoresData(mockStores);
+        setStoresData([]);
         return;
       }
 
@@ -363,24 +224,28 @@ const DTIDashboard: React.FC = () => {
               ? items.reduce((sum, item) => sum + (item.price || 0), 0) / itemCount
               : 0;
 
+            // Use 'name' column from database, fallback to store_address or default
+            const displayName = store.name || store.store_address || `Store #${store.storeId}`;
+
+            // Status based on verified column - verified stores show as "Active" (green), unverified = "Under Review" (yellow)
+            const storeStatus = store.verified === true ? 'Active' : 'Under Review';
+
             return {
               storeId: store.storeId,
-              storeName: store.name,
+              storeName: displayName,
               itemCount,
               avgPrice: parseFloat(avgPrice.toFixed(2)),
-              status: itemCount > 0 ? 'Active' : 'Under Review'
+              status: storeStatus
             };
           })
         );
 
-        console.log('📈 Store analytics processed:', storeAnalytics);
         setStoresData(storeAnalytics);
       } else {
-        console.log('⚠️ No stores found in database');
         setStoresData([]);
       }
     } catch (error) {
-      console.error('❌ Error loading store analytics:', error);
+      console.error('Error loading store analytics:', error);
       setStoresData([]);
     }
   };
@@ -403,8 +268,6 @@ const DTIDashboard: React.FC = () => {
       }
 
       if (productData) {
-        console.log(`Fetched ${productData.length} product records from database`);
-        
         // Remove duplicates based on Name, Brand, Variant, Unit combination
         const uniqueProducts = productData.filter((product, index, self) => 
           index === self.findIndex(p => 
@@ -415,7 +278,6 @@ const DTIDashboard: React.FC = () => {
           )
         );
 
-        console.log(`After deduplication: ${uniqueProducts.length} unique products for DTI`);
         setProductTypes(uniqueProducts);
         
         // Load existing SRP prices from SRP table
@@ -764,20 +626,10 @@ const DTIDashboard: React.FC = () => {
       if (storeData) {
         setSelectedStore(storeData);
       } else {
-        // Mock store details for demonstration
-        const mockStoreDetails: StoreDetails = {
-          storeId: storeId,
-          name: `Store ${storeId}`,
-          store_description: 'A sample grocery store for DTI monitoring demonstration',
-          location: '123 Sample Street, Metro Manila, Philippines',
-          store_phone: '+63 912 345 6789',
-          store_email: `store${storeId}@example.com`,
-          store_image_url: '',
-          owner_id: 'mock-owner-id',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        setSelectedStore(mockStoreDetails);
+        setSelectedStore(null);
+        setToastMessage('Store not found');
+        setShowToast(true);
+        return;
       }
 
       // Get store items with productTypeId
@@ -791,66 +643,14 @@ const DTIDashboard: React.FC = () => {
         .order('name', { ascending: true });
 
       if (itemsData && itemsData.length > 0) {
-        console.log('Store items loaded:', itemsData);
-        console.log('Current SRP prices:', srpPrices);
-        
-        // Debug: Check if productTypeId exists in SRP data
-        itemsData.forEach(item => {
-          const srpPrice = getSRPPrice(item.productTypeId);
-          console.log(`Item: ${item.name}, productTypeId: ${item.productTypeId}, SRP Price: ${srpPrice}`);
-        });
-        
         setStoreItems(itemsData);
       } else {
-        // Mock store items for demonstration (with sample productTypeId for SRP comparison)
-        const mockItems: StoreItem[] = [
-          {
-            storeItemId: 1,
-            name: 'Rice (Premium)',
-            description: 'High quality jasmine rice',
-            brand: 'Golden Fields',
-            category: 'Grains',
-            price: 45.00,
-            availability: 100,
-            unit: 'kg',
-            item_image_url: '',
-            productTypeId: 1, // Sample productTypeId for rice
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            storeItemId: 2,
-            name: 'Cooking Oil',
-            description: 'Pure vegetable cooking oil',
-            brand: 'Healthy Choice',
-            category: 'Cooking Essentials',
-            price: 85.50,
-            availability: 50,
-            unit: 'liter',
-            item_image_url: '',
-            productTypeId: 2, // Sample productTypeId for cooking oil
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            storeItemId: 3,
-            name: 'Fresh Eggs',
-            description: 'Farm fresh chicken eggs',
-            brand: 'Country Fresh',
-            category: 'Dairy & Eggs',
-            price: 12.00,
-            availability: 200,
-            unit: 'pcs',
-            item_image_url: '',
-            productTypeId: 3, // Sample productTypeId for eggs
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
-        setStoreItems(mockItems);
+        setStoreItems([]);
       }
     } catch (error) {
       console.error('Error loading store details:', error);
+      setSelectedStore(null);
+      setStoreItems([]);
     } finally {
       setLoadingStoreItems(false);
     }
@@ -1096,7 +896,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
   const loadDTIData = useCallback(async () => {
     setLoading(true);
     try {
-      await loadDashboardStats();
       await loadStoreAnalytics();
       await loadProductTypesAndSRP();
     } catch (error) {
@@ -1114,107 +913,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
     await supabase.auth.signOut();
     window.location.href = '/login';
   };
-
-  if (loading) {
-    return (
-      <IonPage>
-        <div className="dti-loading">
-          <IonSpinner name="crescent" />
-          <p>Loading DTI Dashboard...</p>
-        </div>
-      </IonPage>
-    );
-  }
-
-  const renderAnalytics = () => (
-    <div className="dti-analytics-container">
-      <div className="dti-welcome">
-        <h1>DTI Analytics Dashboard</h1>
-        <p>Monitor grocery stores and pricing across the Philippines</p>
-      </div>
-      
-      <IonGrid>
-        <IonRow>
-          <IonCol size="6">
-            <IonCard 
-              className="dti-stats-card clickable-card" 
-              button 
-              onClick={() => setSelectedSegment('stores')}
-            >
-              <IonCardContent className="dti-stats-content">
-                <IonIcon icon={storefrontOutline} className="dti-stats-icon stores" />
-                <div className="dti-stats-info">
-                  <h2>{stats.totalStores}</h2>
-                  <p>Monitored Stores</p>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-          <IonCol size="6">
-            <IonCard 
-              className="dti-stats-card clickable-card" 
-              button 
-              onClick={() => setSelectedSegment('srp')}
-            >
-              <IonCardContent className="dti-stats-content">
-                <IonIcon icon={cartOutline} className="dti-stats-icon items" />
-                <div className="dti-stats-info">
-                  <h2>{stats.totalItems}</h2>
-                  <p>Tracked Items</p>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-        </IonRow>
-        <IonRow>
-          <IonCol size="6">
-            <IonCard className="dti-stats-card">
-              <IonCardContent className="dti-stats-content">
-                <IonIcon icon={pricetagOutline} className="dti-stats-icon pricing" />
-                <div className="dti-stats-info">
-                  <h2>{stats.avgPriceRange}</h2>
-                  <p>Price Range</p>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-          <IonCol size="6">
-            <IonCard className="dti-stats-card">
-              <IonCardContent className="dti-stats-content">
-                <IonIcon icon={trendingUpOutline} className="dti-stats-icon transactions" />
-                <div className="dti-stats-info">
-                  <h2>{stats.monthlyTransactions}</h2>
-                  <p>Monthly Reports</p>
-                </div>
-              </IonCardContent>
-            </IonCard>
-          </IonCol>
-        </IonRow>
-      </IonGrid>
-
-      <div className="dti-section">
-        <h3>K-Nearest Neighbors Algorithm Insights</h3>
-        <IonCard>
-          <IonCardContent>
-            <div className="dti-insights">
-              <div className="insight-item">
-                <IonIcon icon={eyeOutline} color="primary" />
-                <span>Real-time price monitoring across {stats.totalStores} grocery stores</span>
-              </div>
-              <div className="insight-item">
-                <IonIcon icon={analyticsOutline} color="success" />
-                <span>ML-powered price prediction and market trend analysis</span>
-              </div>
-              <div className="insight-item">
-                <IonIcon icon={trendingUpOutline} color="warning" />
-                <span>Automated alerts for unusual price fluctuations</span>
-              </div>
-            </div>
-          </IonCardContent>
-        </IonCard>
-      </div>
-    </div>
-  );
 
   const renderStoreMonitoring = () => (
     <div className="dti-stores-container">
@@ -1321,7 +1019,7 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
     return (
       <div className="dti-srp-container">
         <div className="dti-section-header">
-          <h2>SRP Pricing Analysis</h2>
+          <h2>SRP List</h2>
           <IonButton fill="clear" onClick={() => loadProductTypesAndSRP()}>
             <IonIcon icon={refreshOutline} />
           </IonButton>
@@ -1446,10 +1144,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
             value={selectedSegment} 
             onIonChange={e => setSelectedSegment(e.detail.value as string)}
           >
-            <IonSegmentButton value="analytics">
-              <IonIcon icon={analyticsOutline} />
-              <IonLabel>Analytics</IonLabel>
-            </IonSegmentButton>
             <IonSegmentButton value="stores">
               <IonIcon icon={storefrontOutline} />
               <IonLabel>Monitor Stores</IonLabel>
@@ -1461,7 +1155,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
           </IonSegment>
         </div>
 
-        {selectedSegment === 'analytics' && renderAnalytics()}
         {selectedSegment === 'stores' && renderStoreMonitoring()}
         {selectedSegment === 'srp' && renderSRPPricing()}
 

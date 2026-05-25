@@ -36,27 +36,27 @@ ALTER TABLE public.GROCERY_STORE ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ITEMS_IN_STORE ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies for GROCERY_STORE table
-CREATE POLICY "Users can view their own store" ON public.GROCERY_STORE
-    FOR SELECT USING (auth.uid() = owner_id);
+-- PERMISSIVE: Allow all authenticated users to view all stores
+-- This is needed for DTI monitoring dashboard
+CREATE POLICY "Allow authenticated users to view stores" ON public.GROCERY_STORE
+    FOR SELECT USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Users can insert their own store" ON public.GROCERY_STORE
+-- Allow store owners to insert their own stores
+CREATE POLICY "Allow store owners to insert" ON public.GROCERY_STORE
     FOR INSERT WITH CHECK (auth.uid() = owner_id);
 
-CREATE POLICY "Users can update their own store" ON public.GROCERY_STORE
+-- Allow store owners to update their own stores
+CREATE POLICY "Allow store owners to update" ON public.GROCERY_STORE
     FOR UPDATE USING (auth.uid() = owner_id);
 
-CREATE POLICY "Users can delete their own store" ON public.GROCERY_STORE
+-- Allow store owners to delete their own stores
+CREATE POLICY "Allow store owners to delete" ON public.GROCERY_STORE
     FOR DELETE USING (auth.uid() = owner_id);
 
 -- Create RLS policies for ITEMS_IN_STORE table
-CREATE POLICY "Users can view items from their store" ON public.ITEMS_IN_STORE
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.GROCERY_STORE 
-            WHERE GROCERY_STORE.storeId = ITEMS_IN_STORE.storeId 
-            AND GROCERY_STORE.owner_id = auth.uid()
-        )
-    );
+-- PERMISSIVE: Allow all authenticated users to view all items
+CREATE POLICY "Allow authenticated users to view items" ON public.ITEMS_IN_STORE
+    FOR SELECT USING (auth.role() = 'authenticated');
 
 CREATE POLICY "Users can insert items to their store" ON public.ITEMS_IN_STORE
     FOR INSERT WITH CHECK (

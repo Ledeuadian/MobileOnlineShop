@@ -387,25 +387,18 @@ const StoreDashboard: React.FC = () => {
           longitude: data.longitude,
           store_description: data.storeDescription ?? data.store_description ?? ''
         };
-        console.log('Store info loaded:', mappedData);
-        console.log('Store owner_id:', data.owner_id);
-        console.log('Verified status:', mappedData.verified);
         setStoreInfo(mappedData);
         setIsStoreDataLoaded(true);
       } else {
         // No store record exists for this user — auto-create one so the
         // verification modal can be shown
-        console.log('No store found for user, creating default store record...');
-        console.log('userId being used:', userId);
-        
         const insertData = {
-          storeName: '',  // Match database column name
+          name: '',  // Database column is 'name'
           owner_id: userId,
           verified: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
-        console.log('Inserting with data:', insertData);
         
         const { data: newStore, error: insertError } = await supabase
           .from('GROCERY_STORE')
@@ -415,8 +408,6 @@ const StoreDashboard: React.FC = () => {
 
         if (insertError) {
           console.error('Error auto-creating store record:', insertError);
-          console.error('Error details:', JSON.stringify(insertError, null, 2));
-          // Check if RLS is blocking - try with explicit auth context
           if (insertError.code === '42501' || insertError.message.includes('permission')) {
             console.error('RLS PERMISSION DENIED - Check your RLS policies');
           }
@@ -425,13 +416,11 @@ const StoreDashboard: React.FC = () => {
         }
 
         if (newStore) {
-          console.log('Default store record created successfully:', newStore);
-          console.log('Created store owner_id:', newStore.owner_id);
           const mappedData = {
             ...newStore,
-            name: newStore.storeName ?? newStore.name ?? '',
+            name: newStore.name ?? '',
             store_address: newStore.store_address ?? newStore.location ?? '',
-            store_description: newStore.storeDescription ?? newStore.store_description ?? '',
+            store_description: newStore.store_description ?? '',
             latitude: newStore.latitude,
             longitude: newStore.longitude
           };
@@ -674,7 +663,7 @@ I'll automatically extract and save them for you!
           longitude: result.data.longitude ?? lng
         };
         setStoreInfo(mapped);
-        console.log('Coordinates saved successfully. Store owner_id:', result.data.owner_id);
+        
       }
     } catch (err) {
       console.error('Error persisting coordinates to GROCERY_STORE:', err);
@@ -686,11 +675,12 @@ I'll automatically extract and save them for you!
       if (!currentUser) return;
 
       // Map the frontend fields to database column names
+      // Note: Database uses 'name', 'location' (not store_address), 'store_description'
       const storeData = {
         storeId: storeInfo.store_id || storeInfo.storeId,
-        storeName: storeInfo.name,  // Match database column name
-        store_description: storeInfo.store_description,
-        store_address: storeInfo.store_address,  // Match database column name
+        name: storeInfo.name,  // Database column is 'name'
+        store_description: storeInfo.store_description,  // Database column is 'store_description'
+        location: storeInfo.store_address,  // Database column is 'location'
         store_phone: storeInfo.store_phone,
         store_email: storeInfo.store_email,
         gcash_number: storeInfo.gcash_number,
@@ -700,7 +690,7 @@ I'll automatically extract and save them for you!
         owner_id: currentUser.id,
         updated_at: new Date().toISOString()
       };
-      console.log('Saving store with data:', storeData);
+      
 
       // Use upsert to either insert or update based on storeId
       const result = await supabase
@@ -721,13 +711,13 @@ I'll automatically extract and save them for you!
         // Map database column names back to frontend field names
         const mappedData = {
           ...result.data,
-          store_address: result.data.store_address ?? '', // Use store_address directly
-          store_description: result.data.storeDescription ?? result.data.store_description ?? '',
-          name: result.data.storeName ?? result.data.name ?? '',
+          name: result.data.name ?? '',
+          store_address: result.data.location ?? '',  // Database column is 'location', map to store_address
+          store_description: result.data.store_description ?? '',
           latitude: result.data.latitude,
           longitude: result.data.longitude
         };
-        console.log('Saved store result mapped:', mappedData);
+        
         setStoreInfo(mappedData);
       }
 
@@ -1167,15 +1157,10 @@ I'll automatically extract and save them for you!
 
   const saveStockItem = async () => {
     try {
-      console.log('🧪 Checking store info:', storeInfo);
-      console.log('📝 Store info keys:', Object.keys(storeInfo));
-      
       // Check for store ID using multiple possible column names
       const storeId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
-      console.log('🏪 Found store ID:', storeId);
       
       if (!storeId) {
-        console.log('❌ No store ID found');
         setAlertMessage('Please save store information first');
         setShowAlert(true);
         return;
@@ -1183,12 +1168,6 @@ I'll automatically extract and save them for you!
 
       // 🎯 Determine Product Type ID (manual selection takes priority)
       const productTypeId = selectedProductTypeId;
-
-      if (productTypeId) {
-        console.log('✅ Product Type ID assigned:', productTypeId);
-      } else {
-        console.log('⚠️ No product type selected - item will be saved without productTypeId');
-      }
 
       const currentStoreId = storeInfo.store_id || storeInfo.storeId || storeInfo.id;
       // Combine unit value + unit type (e.g., "50" + "ml" = "50ml")
@@ -1202,21 +1181,15 @@ I'll automatically extract and save them for you!
         updated_at: new Date().toISOString()
       };
 
-      console.log('🖼️ Item data being saved:', itemData);
-      console.log('📸 Image URL in data:', itemData.item_image_url);
-      console.log('🎯 Product Type ID assigned:', itemData.productTypeId);
-
       let result;
       if (editingItem) {
         // Update existing item
-        console.log('🔄 Updating existing item with ID:', editingItem.storeItemId);
         result = await supabase
           .from('ITEMS_IN_STORE')
           .update(itemData)
           .eq('storeItemId', editingItem.storeItemId);
       } else {
         // Create new item
-        console.log('➕ Creating new item');
         result = await supabase
           .from('ITEMS_IN_STORE')
           .insert([itemData]);
@@ -2468,16 +2441,16 @@ I'll automatically extract and save them for you!
                 />
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Unit Value</IonLabel>
+                <IonLabel position="stacked">Quantity</IonLabel>
                 <IonInput
                   type="number"
                   value={unitValue}
                   onIonInput={(e) => setUnitValue(e.detail.value!)}
-                  placeholder="Enter unit value (e.g., 50)"
+                  placeholder="Enter quantity (e.g., 50)"
                 />
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Unit Type</IonLabel>
+                <IonLabel position="stacked">Unit</IonLabel>
                 <IonSelect
                   value={newItem.unit}
                   onIonChange={(e) => setNewItem({...newItem, unit: e.detail.value})}
@@ -2515,12 +2488,12 @@ I'll automatically extract and save them for you!
                 </IonSelect>
               </IonItem>
               <IonItem>
-                <IonLabel position="stacked">Quantity</IonLabel>
+                <IonLabel position="stacked">Stock</IonLabel>
                 <IonInput
                   type="number"
                   value={newItem.availability}
                   onIonInput={(e) => setNewItem({...newItem, availability: parseInt(e.detail.value!) || 0})}
-                  placeholder="Enter quantity"
+                  placeholder="Enter stock quantity"
                 />
               </IonItem>
               {/* Suggested Product Types - shown only when all required fields are filled */}
