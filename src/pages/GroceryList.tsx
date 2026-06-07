@@ -80,15 +80,60 @@ const GroceryList: React.FC = () => {
     }
   };
 
-  // Function to fetch product types from database that are in store stock and order by most recently sold
+  // Haversine distance in km between two lat/lng points (mirrors KNNService.calculateDistance)
+  const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth radius in km
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  };
+
+  // Nearby-stores radius (km) used when the shopper has no purchase history
+  const NEARBY_RADIUS_KM = 5;
+
+  // Function to fetch product types from database.
+  // Sorting logic:
+  //   1) If the shopper has prior purchases, rank by THEIR purchase history (most-bought first,
+  //      most-recent purchase as tie-breaker). Items they bought but that are no longer in stock
+  //      are filtered out; the rest of the catalog (in-stock, no purchases) is appended.
+  //   2) If the shopper has NO purchase history, fall back to the most-purchased items
+  //      among NEARBY stores (within NEARBY_RADIUS_KM of the shopper's saved location).
+  //   3) If the shopper has no location either, fall back to the previous global "most purchased" logic.
   const fetchProductTypes = async (autoCheckProductTypeId?: number) => {
     try {
       setLoading(true);
-      console.log('Fetching product types from PRODUCT_TYPE table (only in stock, ordered by recent sales)...');
+      console.log('Fetching product types (personalized by shopper history; nearby-store fallback)...');
       
       // Load previously saved selections
       const savedSelections = loadSavedSelections();
       console.log('Loaded saved selections:', Array.from(savedSelections));
+
+      // Resolve shopper identity (public USER row) and saved location (for nearby-store fallback)
+      let shopperUserId: number | null = null;
+      let shopperLat: number | null = null;
+      let shopperLng: number | null = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email) {
+          const { data: userData } = await supabase
+            .from('USER')
+            .select('userId, latitude, longitude')
+            .eq('email', user.email)
+            .single();
+          if (userData) {
+            shopperUserId = userData.userId;
+            shopperLat = userData.latitude != null ? Number(userData.latitude) : null;
+            shopperLng = userData.longitude != null ? Number(userData.longitude) : null;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not resolve shopper identity/location:', e);
+      }
+      console.log('Shopper:', { shopperUserId, shopperLat, shopperLng });
       
       // Step 1: Get products that have items in ITEMS_IN_STORE (in stock in at least one store)
       const { data: productsInStock, error: stockError } = await supabase
@@ -105,7 +150,7 @@ const GroceryList: React.FC = () => {
       // Step 2: Get productTypeIds that exist in ITEMS_IN_STORE (have stock)
       const { data: itemsInStore, error: itemsError } = await supabase
         .from('ITEMS_IN_STORE')
-        .select('productTypeId');
+        .select('productTypeId, storeItemId, storeId');
 
       if (itemsError) {
         console.error('Error fetching items in store:', itemsError);
@@ -114,46 +159,131 @@ const GroceryList: React.FC = () => {
       const productTypeIdsInStock = new Set(itemsInStore?.map(item => item.productTypeId) || []);
       console.log(`Products in stock (in ITEMS_IN_STORE): ${productTypeIdsInStock.size}`);
 
-      // Step 3: Get sales data from ORDER_ITEMS joined with ORDERS to count recent sales
-      const { data: orderItemsData, error: orderError } = await supabase
-        .from('ORDER_ITEMS')
-        .select(`
-          storeItemId,
-          quantity,
-          createdAt,
-          ORDERS!inner(createdAt)
-        `);
-
-      if (orderError) {
-        console.warn('Could not fetch order items, proceeding without sales data:', orderError);
-      }
-
-      // Get store items to map storeItemId to productTypeId
-      const { data: storeItems, error: storeItemsError } = await supabase
-        .from('ITEMS_IN_STORE')
-        .select('storeItemId, productTypeId');
-
-      if (storeItemsError) {
-        console.warn('Could not fetch store items for sales mapping:', storeItemsError);
-      }
-
-      // Create a map of storeItemId to productTypeId
-      const storeItemToProductType = new Map(storeItems?.map(item => [item.storeItemId, item.productTypeId]) || []);
-
-      // Count sales per productTypeId (most recent = higher count in recent orders)
-      const salesCountMap = new Map<number, number>();
-      if (orderItemsData) {
-        orderItemsData.forEach(orderItem => {
-          const productTypeId = storeItemToProductType.get(orderItem.storeItemId);
-          if (productTypeId) {
-            const currentCount = salesCountMap.get(productTypeId) || 0;
-            salesCountMap.set(productTypeId, currentCount + (orderItem.quantity || 1));
+      // Map storeItemId -> productTypeId (used to translate order history into product types)
+      const storeItemToProductType = new Map<number, number>();
+      // Track which stores currently carry each productTypeId (for nearby-store fallback)
+      const productTypeToStoreIds = new Map<number, Set<number>>();
+      itemsInStore?.forEach(item => {
+        if (item.productTypeId != null) {
+          storeItemToProductType.set(item.storeItemId, item.productTypeId);
+          if (!productTypeToStoreIds.has(item.productTypeId)) {
+            productTypeToStoreIds.set(item.productTypeId, new Set());
           }
-        });
-      }
+          if (item.storeId != null) {
+            productTypeToStoreIds.get(item.productTypeId)!.add(item.storeId);
+          }
+        }
+      });
 
-      console.log('Sales count map (productTypeId -> total sold):', 
-        Array.from(salesCountMap.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v}`));
+      // ---- Build personalized ranking from the shopper's purchase history ----
+      // personalPurchases: productTypeId -> { count: total qty, lastBoughtAt: ms timestamp }
+      const personalPurchases = new Map<number, { count: number; lastBoughtAt: number }>();
+
+      if (shopperUserId != null) {
+        // Get the shopper's order ids (exclude cancelled)
+        const { data: shopperOrders, error: ordersErr } = await supabase
+          .from('ORDERS')
+          .select('orderId, createdAt, status')
+          .eq('userId', shopperUserId)
+          .neq('status', 'cancelled');
+
+        if (ordersErr) {
+          console.warn('Could not fetch shopper orders:', ordersErr);
+        } else if (shopperOrders && shopperOrders.length > 0) {
+          const orderIdToCreatedAt = new Map<number, number>(
+            shopperOrders.map(o => [o.orderId, o.createdAt ? new Date(o.createdAt).getTime() : 0])
+          );
+          const orderIds = shopperOrders.map(o => o.orderId);
+
+          const { data: orderItemsData, error: orderItemsErr } = await supabase
+            .from('ORDER_ITEMS')
+            .select('orderId, storeItemId, quantity')
+            .in('orderId', orderIds);
+
+          if (orderItemsErr) {
+            console.warn('Could not fetch shopper order items:', orderItemsErr);
+          } else if (orderItemsData) {
+            orderItemsData.forEach(oi => {
+              const productTypeId = storeItemToProductType.get(oi.storeItemId);
+              if (productTypeId == null) return;
+              const qty = oi.quantity || 1;
+              const ts = orderIdToCreatedAt.get(oi.orderId) || 0;
+              const cur = personalPurchases.get(productTypeId);
+              if (cur) {
+                cur.count += qty;
+                if (ts > cur.lastBoughtAt) cur.lastBoughtAt = ts;
+              } else {
+                personalPurchases.set(productTypeId, { count: qty, lastBoughtAt: ts });
+              }
+            });
+          }
+        }
+      }
+      console.log('Personal purchase map (productTypeId -> {count, lastBoughtAt}):',
+        Array.from(personalPurchases.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v.count}@${new Date(v.lastBoughtAt).toISOString()}`));
+
+      const hasPurchaseHistory = personalPurchases.size > 0;
+
+      // ---- Fallback: nearby-store ranking (only used when there is NO purchase history) ----
+      // nearbyStoreIds: stores within NEARBY_RADIUS_KM of the shopper's saved location.
+      let nearbyStoreIds: Set<number> | null = null;
+      let globalSalesCountMap: Map<number, number> | null = null;
+
+      if (!hasPurchaseHistory) {
+        if (shopperLat != null && shopperLng != null) {
+          const { data: storesWithCoords, error: storesErr } = await supabase
+            .from('GROCERY_STORE')
+            .select('storeId, latitude, longitude');
+          if (storesErr) {
+            console.warn('Could not fetch stores for nearby filter:', storesErr);
+          } else if (storesWithCoords) {
+            nearbyStoreIds = new Set<number>();
+            storesWithCoords.forEach(s => {
+              if (s.latitude == null || s.longitude == null) return;
+              const d = haversineKm(shopperLat, shopperLng, Number(s.latitude), Number(s.longitude));
+              if (d <= NEARBY_RADIUS_KM) nearbyStoreIds!.add(s.storeId);
+            });
+            console.log(`Nearby stores within ${NEARBY_RADIUS_KM}km: ${nearbyStoreIds.size}`);
+          }
+        }
+
+        // Compute sales counts, optionally restricted to nearby stores
+        const { data: orderItemsData, error: orderError } = await supabase
+          .from('ORDER_ITEMS')
+          .select(`
+            storeItemId,
+            quantity,
+            ORDERS!inner(createdAt)
+          `)
+          .neq('ORDERS.status', 'cancelled');
+
+        if (orderError) {
+          console.warn('Could not fetch order items for fallback ranking:', orderError);
+        }
+
+        globalSalesCountMap = new Map<number, number>();
+        if (orderItemsData) {
+          // Local non-nullable alias so the compiler is happy inside the callback
+          // (it cannot prove the map is non-null at the moment the callback runs).
+          const salesMap = globalSalesCountMap;
+          orderItemsData.forEach(orderItem => {
+            const productTypeId = storeItemToProductType.get(orderItem.storeItemId);
+            if (!productTypeId) return;
+            // If filtering by nearby stores, only count when at least one store carrying
+            // this productTypeId is nearby (i.e. the product is actually available nearby).
+            if (nearbyStoreIds) {
+              const stores = productTypeToStoreIds.get(productTypeId);
+              if (!stores || !Array.from(stores).some(sid => nearbyStoreIds!.has(sid))) {
+                return;
+              }
+            }
+            const currentCount = salesMap.get(productTypeId) || 0;
+            salesMap.set(productTypeId, currentCount + (orderItem.quantity || 1));
+          });
+        }
+        console.log('Fallback sales count (productTypeId -> total sold):',
+          Array.from(globalSalesCountMap.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v}`));
+      }
 
       // Filter products to only include those in stock
       const productsWithStock = productsInStock?.filter(product => 
@@ -177,23 +307,46 @@ const GroceryList: React.FC = () => {
 
       console.log(`After deduplication: ${uniqueProducts.length} unique products`);
 
-      // Sort by sales count (most sold = highest count) in ASCENDING order as requested
-      // Products with more sales appear first (since they're more popular/recently sold)
-      const sortedProducts = uniqueProducts.sort((a, b) => {
-        const salesA = salesCountMap.get(a.productTypeId) || 0;
-        const salesB = salesCountMap.get(b.productTypeId) || 0;
-        // Sort by sales count descending (most sold first), then alphabetically
-        if (salesB !== salesA) {
-          return salesB - salesA;
-        }
-        return a.Name.localeCompare(b.Name);
-      });
-
-      console.log('Products sorted by sales (most sold first):', 
-        sortedProducts.slice(0, 5).map(p => ({
-          name: p.Name,
-          sales: salesCountMap.get(p.productTypeId) || 0
-        })));
+      // ---- Sort ----
+      let sortedProducts: typeof uniqueProducts;
+      if (hasPurchaseHistory) {
+        // 1) Shopper's previously purchased items, most-bought first, then most-recent, then alphabetical.
+        //    Only items that are still in stock somewhere are surfaced (no point showing something they
+        //    can't reorder).
+        // 2) Remaining in-stock products the shopper has never bought, appended in alphabetical order.
+        sortedProducts = [...uniqueProducts].sort((a, b) => {
+          const aData = personalPurchases.get(a.productTypeId);
+          const bData = personalPurchases.get(b.productTypeId);
+          if (aData && !bData) return -1;        // a purchased, b not  -> a first
+          if (!aData && bData) return 1;         // b purchased, a not  -> b first
+          if (aData && bData) {
+            if (bData.count !== aData.count) return bData.count - aData.count;
+            if (bData.lastBoughtAt !== aData.lastBoughtAt) return bData.lastBoughtAt - aData.lastBoughtAt;
+          }
+          return a.Name.localeCompare(b.Name);
+        });
+        console.log('Personalized sort: shopper history (most-bought first, then most-recent).',
+          sortedProducts.slice(0, 5).map(p => ({
+            name: p.Name,
+            purchases: personalPurchases.get(p.productTypeId)?.count ?? 0
+          })));
+      } else {
+        // Fallback ranking: most-purchased among (nearby) stores, then alphabetical.
+        const salesMap = globalSalesCountMap ?? new Map<number, number>();
+        sortedProducts = [...uniqueProducts].sort((a, b) => {
+          const salesA = salesMap.get(a.productTypeId) || 0;
+          const salesB = salesMap.get(b.productTypeId) || 0;
+          if (salesB !== salesA) return salesB - salesA;
+          return a.Name.localeCompare(b.Name);
+        });
+        console.log(nearbyStoreIds
+          ? `Fallback sort: most-purchased among ${nearbyStoreIds.size} nearby store(s) (${NEARBY_RADIUS_KM}km radius).`
+          : 'Fallback sort: global most-purchased (no shopper location available).',
+          sortedProducts.slice(0, 5).map(p => ({
+            name: p.Name,
+            sales: salesMap.get(p.productTypeId) || 0
+          })));
+      }
 
       // Generate unique IDs for each item to avoid conflicts, but preserve productTypeId
       const formattedItems: GroceryItem[] = sortedProducts.map((item, index) => {
