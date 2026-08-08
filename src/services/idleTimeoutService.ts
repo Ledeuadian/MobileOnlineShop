@@ -40,11 +40,19 @@ export class IdleTimeoutService {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.email) return;
 
-    const { data: userData } = await supabase
+    // Use .maybeSingle() instead of .single() to avoid 406 errors when no
+    // USER row exists for this email (e.g. auth user created but profile
+    // registration not yet completed).
+    const { data: userData, error: userErr } = await supabase
       .from('USER')
       .select('userTypeCode')
       .eq('email', session.user.email)
-      .single();
+      .maybeSingle();
+
+    if (userErr) {
+      console.warn('Could not fetch userTypeCode:', userErr.message);
+      return;
+    }
 
     const code = userData?.userTypeCode as number | undefined;
 

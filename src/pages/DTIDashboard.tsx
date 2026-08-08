@@ -103,13 +103,10 @@ const DTIDashboard: React.FC = () => {
   
   // Search and filter state for store items
   const [itemSearchText, setItemSearchText] = useState('');
-  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
-  const [editingPriceValue, setEditingPriceValue] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
   const [showItemDetails, setShowItemDetails] = useState(false);
   const [actionImage, setActionImage] = useState<File | null>(null);
   const [actionImagePreview, setActionImagePreview] = useState<string | null>(null);
-  const [uploadingAction, setUploadingAction] = useState(false);
   const [showClarificationModal, setShowClarificationModal] = useState(false);
   const [clarificationTitle, setClarificationTitle] = useState('');
   const [clarificationMessage, setClarificationMessage] = useState('');
@@ -673,57 +670,7 @@ const DTIDashboard: React.FC = () => {
     );
   });
 
-  // Handle double-click on price to edit
-  const handlePriceDoubleClick = (itemId: number, currentPrice: number) => {
-    setEditingPriceId(itemId);
-    setEditingPriceValue(currentPrice.toString());
-  };
-
-  // Save edited price
-  const handleSavePrice = async (itemId: number) => {
-    const newPrice = parseFloat(editingPriceValue);
-    
-    if (isNaN(newPrice) || newPrice < 0) {
-      setToastMessage('Please enter a valid price');
-      setShowToast(true);
-      return;
-    }
-
-    try {
-      // Update price in database
-      const { error } = await supabase
-        .from('ITEMS_IN_STORE')
-        .update({ price: newPrice, updated_at: new Date().toISOString() })
-        .eq('storeItemId', itemId);
-
-      if (error) throw error;
-
-      // Update local state
-      setStoreItems(prevItems => 
-        prevItems.map(item => 
-          item.storeItemId === itemId 
-            ? { ...item, price: newPrice } 
-            : item
-        )
-      );
-
-      setToastMessage('Price updated successfully');
-      setShowToast(true);
-      setEditingPriceId(null);
-      setEditingPriceValue('');
-    } catch (error) {
-      console.error('Error updating price:', error);
-      setToastMessage('Failed to update price');
-      setShowToast(true);
-    }
-  };
-
-  // Cancel price editing
-  const handleCancelPriceEdit = () => {
-    setEditingPriceId(null);
-    setEditingPriceValue('');
-  };
-
+  // (DTI can view store prices but cannot edit them.)
 
   const closeStoreDetails = () => {
     setIsStoreDetailsModalOpen(false);
@@ -747,49 +694,6 @@ const DTIDashboard: React.FC = () => {
     }
   };
 
-  const handleProceedToAction = async () => {
-    if (!selectedItem) return;
-
-    try {
-      setUploadingAction(true);
-
-      let imageUrl = null;
-      if (actionImage) {
-        // Upload image to Supabase Storage
-        const fileExt = actionImage.name.split('.').pop();
-        const fileName = `dti-action-${selectedItem.storeItemId}-${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('Images')
-          .upload(filePath, actionImage);
-
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from('Images')
-          .getPublicUrl(filePath);
-
-        imageUrl = urlData.publicUrl;
-      }
-
-      // Here you can save the action to a database table if needed
-      // For now, just show success message
-      setToastMessage(`Action reviewed and processed${imageUrl ? ' with attached image' : ''}`);
-      setShowToast(true);
-      
-      // Reset image after successful upload
-      setActionImage(null);
-      setActionImagePreview(null);
-    } catch (error) {
-      console.error('Error processing action:', error);
-      setToastMessage('Error processing action');
-      setShowToast(true);
-    } finally {
-      setUploadingAction(false);
-    }
-  };
-
   const handleSendClarification = async () => {
     if (!selectedItem || !selectedStore || !clarificationTitle.trim() || !clarificationMessage.trim()) {
       setToastMessage('Please fill in all required fields');
@@ -808,7 +712,7 @@ const DTIDashboard: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (!userData) throw new Error('User data not found');
 
@@ -1224,26 +1128,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                         ₱ {selectedItem.price.toFixed(2)}
                       </div>
                     </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '0.5rem' }}>
-                        Deviation
-                      </div>
-                      <div style={{ 
-                        fontSize: '20px', 
-                        fontWeight: '700',
-                        color: (() => {
-                          const comparison = getPriceComparison(selectedItem.price, selectedItem.productTypeId);
-                          return comparison.percentage && comparison.percentage > 0 ? '#dc3545' : '#28a745';
-                        })()
-                      }}>
-                        {(() => {
-                          const comparison = getPriceComparison(selectedItem.price, selectedItem.productTypeId);
-                          return comparison.percentage !== null 
-                            ? `${comparison.percentage > 0 ? '+' : ''}${comparison.percentage.toFixed(0)}%`
-                            : 'N/A';
-                        })()}
-                      </div>
-                    </div>
                   </div>
                 </IonCardContent>
               </IonCard>
@@ -1348,78 +1232,7 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                 </div>
               </div>
 
-              {/* DTI Action Image Upload */}
-              <div style={{ margin: '2rem 0' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#333', marginBottom: '1rem' }}>
-                  Attach Supporting Document
-                </h3>
-                <div style={{
-                  border: '2px dashed #ccc',
-                  borderRadius: '8px',
-                  padding: '1.5rem',
-                  textAlign: 'center',
-                  backgroundColor: '#f8f9fa'
-                }}>
-                  {actionImagePreview ? (
-                    <div>
-                      <img
-                        src={actionImagePreview}
-                        alt="Action document"
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '300px',
-                          borderRadius: '8px',
-                          marginBottom: '1rem'
-                        }}
-                      />
-                      <div>
-                        <IonButton
-                          size="small"
-                          fill="clear"
-                          color="danger"
-                          onClick={() => {
-                            setActionImage(null);
-                            setActionImagePreview(null);
-                          }}
-                        >
-                          Remove Image
-                        </IonButton>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleActionImageSelect}
-                        style={{ display: 'none' }}
-                        id="action-image-upload"
-                      />
-                      <label
-                        htmlFor="action-image-upload"
-                        style={{
-                          cursor: 'pointer',
-                          display: 'inline-block'
-                        }}
-                      >
-                        <div style={{ padding: '1rem' }}>
-                          <IonIcon
-                            icon={addOutline}
-                            style={{ fontSize: '48px', color: '#999', marginBottom: '0.5rem' }}
-                          />
-                          <p style={{ color: '#666', margin: 0 }}>
-                            Click to upload supporting document or image
-                          </p>
-                          <p style={{ color: '#999', fontSize: '12px', marginTop: '0.5rem' }}>
-                            (Optional - e.g., notice, documentation, etc.)
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+              {/* DTI Action: Send Notice of Clarification */}
               <IonButton
                 expand="block"
                 color="warning"
@@ -1432,26 +1245,7 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                 Send Notice of Clarification
               </IonButton>
 
-              <IonButton
-                expand="block"
-                disabled={uploadingAction}
-                style={{
-                  marginTop: '1rem',
-                  '--background': '#1a5f7a',
-                  '--background-hover': '#164d61',
-                  fontWeight: '600'
-                }}
-                onClick={handleProceedToAction}
-              >
-                {uploadingAction ? (
-                  <>
-                    <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
-                    Processing...
-                  </>
-                ) : (
-                  'Reviewed: Proceed to Action'
-                )}
-              </IonButton>
+
             </div>
           ) : selectedStore && (
             <div className="store-details-container">
@@ -1503,29 +1297,6 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                     style={{ marginBottom: '0.5rem' }}
                   />
                   
-                  {/* Edit Hint */}
-                  <div style={{ 
-                    padding: '8px 16px',
-                    marginBottom: '1rem',
-                    backgroundColor: '#fff3cd',
-                    borderLeft: '4px solid #ff6b6b',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <IonIcon 
-                      icon={informationCircleOutline} 
-                      style={{ color: '#ff6b6b', fontSize: '20px', flexShrink: 0 }} 
-                    />
-                    <span style={{ 
-                      color: '#856404',
-                      fontSize: '13px',
-                      fontWeight: '500'
-                    }}>
-                      💡 <strong style={{ color: '#ff6b6b' }}>Double-tap</strong> on store price to edit it
-                    </span>
-                  </div>
                   
                   {loadingStoreItems ? (
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -1567,46 +1338,12 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                               textAlign: 'center',
                               fontWeight: '600',
                               color: '#333'
-                            }}>Deviation</th>
-                            <th style={{ 
-                              padding: '12px 8px', 
-                              textAlign: 'center',
-                              fontWeight: '600',
-                              color: '#333'
-                            }}>Status</th>
-                            <th style={{ 
-                              padding: '12px 8px', 
-                              textAlign: 'center',
-                              fontWeight: '600',
-                              color: '#333'
                             }}>Last Updated</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredStoreItems.map((item) => {
                             const priceComparison = getPriceComparison(item.price, item.productTypeId);
-                            
-                            // Determine status color
-                            let statusColor = '#6c757d'; // Gray for no SRP
-                            let statusText = 'No SRP';
-                            
-                            if (priceComparison.srpPrice) {
-                              const percentDiff = priceComparison.percentage || 0;
-                              
-                              if (percentDiff <= 0) {
-                                // Green: At or below SRP
-                                statusColor = '#28a745';
-                                statusText = 'Within Range';
-                              } else if (percentDiff > 0 && percentDiff <= 10) {
-                                // Orange: Slightly higher (up to 10%)
-                                statusColor = '#fd7e14';
-                                statusText = 'Slightly Higher';
-                              } else {
-                                // Red: Overpriced (>10%)
-                                statusColor = '#dc3545';
-                                statusText = 'Overpriced';
-                              }
-                            }
                             
                             // Calculate days since last update
                             const daysSinceUpdate = Math.floor(
@@ -1616,20 +1353,24 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                                                    daysSinceUpdate === 1 ? '1 day ago' :
                                                    `${daysSinceUpdate} days ago`;
                             
+                            const isOverSRP = priceComparison.status === 'above';
                             return (
-                              <tr 
-                                key={item.storeItemId} 
+                              <tr
+                                key={item.storeItemId}
                                 onClick={() => {
                                   setSelectedItem(item);
                                   setShowItemDetails(true);
                                 }}
-                                style={{ 
+                                style={{
                                   borderBottom: '1px solid #e0e0e0',
                                   cursor: 'pointer',
-                                  transition: 'background-color 0.2s'
+                                  transition: 'background-color 0.2s',
+                                  backgroundColor: isOverSRP ? '#fff3cd' : 'transparent',
+                                  borderLeft: isOverSRP ? '4px solid #ffc107' : '4px solid transparent'
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isOverSRP ? '#ffe69c' : '#f8f9fa'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isOverSRP ? '#fff3cd' : 'transparent'}
+                                title={isOverSRP ? `Price exceeds DTI SRP by ${priceComparison.percentage?.toFixed(0)}%` : undefined}
                               >
                                 <td style={{ padding: '12px 8px' }}>
                                   <div>
@@ -1650,100 +1391,13 @@ Your product ${selectedItem.name} price exceeds the DTI suggested retail price (
                                     `₱${priceComparison.srpPrice.toFixed(2)}` : 
                                     '-'}
                                 </td>
-                                <td style={{ 
-                                  padding: '12px 8px', 
-                                  textAlign: 'center'
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                >
-                                  {editingPriceId === item.storeItemId ? (
-                                    <div style={{ 
-                                      display: 'flex', 
-                                      gap: '4px', 
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}>
-                                      <IonInput
-                                        type="number"
-                                        value={editingPriceValue}
-                                        onIonInput={(e) => setEditingPriceValue(e.detail.value!)}
-                                        placeholder="Price"
-                                        style={{ 
-                                          maxWidth: '80px',
-                                          border: '1px solid #3880ff',
-                                          borderRadius: '4px',
-                                          padding: '2px 4px',
-                                          fontSize: '13px'
-                                        }}
-                                        autofocus
-                                      />
-                                      <IonButton 
-                                        size="small" 
-                                        color="success"
-                                        onClick={() => handleSavePrice(item.storeItemId)}
-                                        style={{ height: '28px' }}
-                                      >
-                                        <IonIcon icon={saveOutline} slot="icon-only" style={{ fontSize: '16px' }} />
-                                      </IonButton>
-                                      <IonButton 
-                                        size="small" 
-                                        color="medium"
-                                        onClick={handleCancelPriceEdit}
-                                        style={{ height: '28px' }}
-                                      >
-                                        <IonIcon icon={close} slot="icon-only" style={{ fontSize: '16px' }} />
-                                      </IonButton>
-                                    </div>
-                                  ) : (
-                                    <span 
-                                      onDoubleClick={() => handlePriceDoubleClick(item.storeItemId, item.price)}
-                                      style={{ 
-                                        cursor: 'pointer',
-                                        fontWeight: '600',
-                                        color: '#3880ff',
-                                        textDecoration: 'underline dotted',
-                                        padding: '4px 8px',
-                                        display: 'inline-block'
-                                      }}
-                                      title="Double-click to edit"
-                                    >
-                                      ₱{item.price.toFixed(2)}
-                                    </span>
-                                  )}
-                                </td>
-                                <td style={{ 
-                                  padding: '12px 8px', 
+                                <td style={{
+                                  padding: '12px 8px',
                                   textAlign: 'center',
-                                  fontWeight: '500',
-                                  color: priceComparison.percentage && priceComparison.percentage > 0 ? '#dc3545' : '#28a745'
+                                  fontWeight: '600',
+                                  color: '#3880ff'
                                 }}>
-                                  {priceComparison.percentage !== null ? 
-                                    `${priceComparison.percentage > 0 ? '+' : ''}${priceComparison.percentage.toFixed(1)}%` : 
-                                    '-'}
-                                </td>
-                                <td style={{ 
-                                  padding: '12px 8px', 
-                                  textAlign: 'center'
-                                }}>
-                                  <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center',
-                                    gap: '8px'
-                                  }}>
-                                    <div style={{
-                                      width: '12px',
-                                      height: '12px',
-                                      borderRadius: '50%',
-                                      backgroundColor: statusColor
-                                    }} />
-                                    <span style={{ 
-                                      fontSize: '12px',
-                                      color: '#6c757d'
-                                    }}>
-                                      {statusText}
-                                    </span>
-                                  </div>
+                                  ₱{item.price.toFixed(2)}
                                 </td>
                                 <td style={{ 
                                   padding: '12px 8px', 

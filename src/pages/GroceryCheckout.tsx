@@ -89,7 +89,7 @@ const GroceryCheckout: React.FC = () => {
         .from('USER')
         .select('userId, firstname, lastname, email')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (userError || !userData) {
         console.error('Error getting user data:', userError);
@@ -170,7 +170,7 @@ const GroceryCheckout: React.FC = () => {
           .from('USER')
           .select('userId')
           .eq('auth_user_id', storeData.owner_id)
-          .single();
+          .maybeSingle();
 
         if (ownerData) {
           // Create notification for store owner

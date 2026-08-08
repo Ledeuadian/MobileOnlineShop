@@ -40,7 +40,7 @@ const AddAddress: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       const publicUserId = userData?.userId;
       if (!publicUserId) {

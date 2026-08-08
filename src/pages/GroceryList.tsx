@@ -74,7 +74,6 @@ const GroceryList: React.FC = () => {
         .filter(item => item.checked && item.productTypeId)
         .map(item => item.productTypeId);
       localStorage.setItem('groceryListSelections', JSON.stringify(selectedProductTypeIds));
-      console.log('Saved selections:', selectedProductTypeIds);
     } catch (error) {
       console.error('Error saving selections:', error);
     }
@@ -106,11 +105,8 @@ const GroceryList: React.FC = () => {
   const fetchProductTypes = async (autoCheckProductTypeId?: number) => {
     try {
       setLoading(true);
-      console.log('Fetching product types (personalized by shopper history; nearby-store fallback)...');
-      
       // Load previously saved selections
       const savedSelections = loadSavedSelections();
-      console.log('Loaded saved selections:', Array.from(savedSelections));
 
       // Resolve shopper identity (public USER row) and saved location (for nearby-store fallback)
       let shopperUserId: number | null = null;
@@ -119,27 +115,30 @@ const GroceryList: React.FC = () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.email) {
+          // Use .maybeSingle() to avoid 406 when no USER row exists yet
+          // (e.g. auth user created but profile registration not yet completed).
           const { data: userData } = await supabase
             .from('USER')
             .select('userId, latitude, longitude')
             .eq('email', user.email)
-            .single();
+            .maybeSingle();
           if (userData) {
             shopperUserId = userData.userId;
             shopperLat = userData.latitude != null ? Number(userData.latitude) : null;
             shopperLng = userData.longitude != null ? Number(userData.longitude) : null;
           }
         }
-      } catch (e) {
-        console.warn('Could not resolve shopper identity/location:', e);
+      } catch {
+        // Shopper identity/location is optional — silently continue without it
       }
-      console.log('Shopper:', { shopperUserId, shopperLat, shopperLng });
       
-      // Step 1: Get products that have items in ITEMS_IN_STORE (in stock in at least one store)
+      // Step 1: Get all product types from PRODUCT_TYPE.
+      // NOTE: explicit limit to avoid Supabase's default 1000-row truncation.
       const { data: productsInStock, error: stockError } = await supabase
         .from('PRODUCT_TYPE')
         .select('productTypeId, Name, Brand, Variant, Unit')
-        .order('Name', { ascending: true });
+        .order('Name', { ascending: true })
+        .limit(50000);
 
       if (stockError) {
         console.error('Error fetching product types:', stockError);
@@ -147,17 +146,22 @@ const GroceryList: React.FC = () => {
         return;
       }
 
-      // Step 2: Get productTypeIds that exist in ITEMS_IN_STORE (have stock)
+      // Step 2: Get in-stock items from ITEMS_IN_STORE.
+      // Filter by availability > 0 and productTypeId > 0 (equivalent to IS NOT NULL but
+      // more reliable across Supabase JS versions).
+      // NOTE: explicit limit to avoid Supabase's default 1000-row truncation.
       const { data: itemsInStore, error: itemsError } = await supabase
         .from('ITEMS_IN_STORE')
-        .select('productTypeId, storeItemId, storeId');
+        .select('productTypeId, storeItemId, storeId, price, availability, name, brand, variant, unit')
+        .gt('productTypeId', 0)
+        .gt('availability', 0)
+        .limit(50000);
 
       if (itemsError) {
         console.error('Error fetching items in store:', itemsError);
       }
 
       const productTypeIdsInStock = new Set(itemsInStore?.map(item => item.productTypeId) || []);
-      console.log(`Products in stock (in ITEMS_IN_STORE): ${productTypeIdsInStock.size}`);
 
       // Map storeItemId -> productTypeId (used to translate order history into product types)
       const storeItemToProductType = new Map<number, number>();
@@ -187,9 +191,7 @@ const GroceryList: React.FC = () => {
           .eq('userId', shopperUserId)
           .neq('status', 'cancelled');
 
-        if (ordersErr) {
-          console.warn('Could not fetch shopper orders:', ordersErr);
-        } else if (shopperOrders && shopperOrders.length > 0) {
+        if (!ordersErr && shopperOrders && shopperOrders.length > 0) {
           const orderIdToCreatedAt = new Map<number, number>(
             shopperOrders.map(o => [o.orderId, o.createdAt ? new Date(o.createdAt).getTime() : 0])
           );
@@ -200,9 +202,7 @@ const GroceryList: React.FC = () => {
             .select('orderId, storeItemId, quantity')
             .in('orderId', orderIds);
 
-          if (orderItemsErr) {
-            console.warn('Could not fetch shopper order items:', orderItemsErr);
-          } else if (orderItemsData) {
+          if (!orderItemsErr && orderItemsData) {
             orderItemsData.forEach(oi => {
               const productTypeId = storeItemToProductType.get(oi.storeItemId);
               if (productTypeId == null) return;
@@ -219,9 +219,6 @@ const GroceryList: React.FC = () => {
           }
         }
       }
-      console.log('Personal purchase map (productTypeId -> {count, lastBoughtAt}):',
-        Array.from(personalPurchases.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v.count}@${new Date(v.lastBoughtAt).toISOString()}`));
-
       const hasPurchaseHistory = personalPurchases.size > 0;
 
       // ---- Fallback: nearby-store ranking (only used when there is NO purchase history) ----
@@ -234,16 +231,14 @@ const GroceryList: React.FC = () => {
           const { data: storesWithCoords, error: storesErr } = await supabase
             .from('GROCERY_STORE')
             .select('storeId, latitude, longitude');
-          if (storesErr) {
-            console.warn('Could not fetch stores for nearby filter:', storesErr);
-          } else if (storesWithCoords) {
+          if (!storesErr && storesWithCoords) {
             nearbyStoreIds = new Set<number>();
             storesWithCoords.forEach(s => {
               if (s.latitude == null || s.longitude == null) return;
               const d = haversineKm(shopperLat, shopperLng, Number(s.latitude), Number(s.longitude));
               if (d <= NEARBY_RADIUS_KM) nearbyStoreIds!.add(s.storeId);
             });
-            console.log(`Nearby stores within ${NEARBY_RADIUS_KM}km: ${nearbyStoreIds.size}`);
+
           }
         }
 
@@ -257,10 +252,7 @@ const GroceryList: React.FC = () => {
           `)
           .neq('ORDERS.status', 'cancelled');
 
-        if (orderError) {
-          console.warn('Could not fetch order items for fallback ranking:', orderError);
-        }
-
+        if (!orderError) {
         globalSalesCountMap = new Map<number, number>();
         if (orderItemsData) {
           // Local non-nullable alias so the compiler is happy inside the callback
@@ -281,9 +273,8 @@ const GroceryList: React.FC = () => {
             salesMap.set(productTypeId, currentCount + (orderItem.quantity || 1));
           });
         }
-        console.log('Fallback sales count (productTypeId -> total sold):',
-          Array.from(globalSalesCountMap.entries()).slice(0, 5).map(([k, v]) => `${k}: ${v}`));
-      }
+        }
+        } // end if (!orderError)
 
       // Filter products to only include those in stock
       const productsWithStock = productsInStock?.filter(product => 
@@ -292,8 +283,6 @@ const GroceryList: React.FC = () => {
         product.Name.trim() !== '' &&
         productTypeIdsInStock.has(product.productTypeId)
       ) || [];
-
-      console.log(`Products in stock after filtering: ${productsWithStock.length}`);
 
       // Remove duplicates based on Name, Brand, Variant, Unit combination
       const uniqueProducts = productsWithStock.filter((product, index, self) => 
@@ -304,8 +293,6 @@ const GroceryList: React.FC = () => {
           p.Unit === product.Unit
         )
       );
-
-      console.log(`After deduplication: ${uniqueProducts.length} unique products`);
 
       // ---- Sort ----
       let sortedProducts: typeof uniqueProducts;
@@ -325,11 +312,6 @@ const GroceryList: React.FC = () => {
           }
           return a.Name.localeCompare(b.Name);
         });
-        console.log('Personalized sort: shopper history (most-bought first, then most-recent).',
-          sortedProducts.slice(0, 5).map(p => ({
-            name: p.Name,
-            purchases: personalPurchases.get(p.productTypeId)?.count ?? 0
-          })));
       } else {
         // Fallback ranking: most-purchased among (nearby) stores, then alphabetical.
         const salesMap = globalSalesCountMap ?? new Map<number, number>();
@@ -339,48 +321,64 @@ const GroceryList: React.FC = () => {
           if (salesB !== salesA) return salesB - salesA;
           return a.Name.localeCompare(b.Name);
         });
-        console.log(nearbyStoreIds
-          ? `Fallback sort: most-purchased among ${nearbyStoreIds.size} nearby store(s) (${NEARBY_RADIUS_KM}km radius).`
-          : 'Fallback sort: global most-purchased (no shopper location available).',
-          sortedProducts.slice(0, 5).map(p => ({
-            name: p.Name,
-            sales: salesMap.get(p.productTypeId) || 0
-          })));
       }
+
+      // Build a map: productTypeId -> first matching store-item name.
+      // Used to display the actual store-listed name (e.g. "Bear Brand Fortified")
+      // instead of the generic PRODUCT_TYPE.Name (e.g. "Milk").
+      const storeItemNameByProductTypeId = new Map<number, { name: string; brand?: string; variant?: string; unit?: string }>();
+      itemsInStore?.forEach(item => {
+        if (item.productTypeId != null && item.name && item.name.trim() !== '') {
+          if (!storeItemNameByProductTypeId.has(item.productTypeId)) {
+            storeItemNameByProductTypeId.set(item.productTypeId, {
+              name: item.name,
+              brand: (item as Record<string, unknown>).brand as string | undefined,
+              variant: (item as Record<string, unknown>).variant as string | undefined,
+              unit: (item as Record<string, unknown>).unit as string | undefined,
+            });
+          }
+        }
+      });
 
       // Generate unique IDs for each item to avoid conflicts, but preserve productTypeId
       const formattedItems: GroceryItem[] = sortedProducts.map((item, index) => {
         const isAutoChecked = autoCheckProductTypeId && item.productTypeId === autoCheckProductTypeId;
         const wasPreviouslyChecked = savedSelections.has(item.productTypeId);
-        
+
+        // Prefer the actual store-item name when it differs from the generic
+        // PRODUCT_TYPE.Name (e.g. "Bear Brand Fortified" instead of "Milk").
+        const storeInfo = storeItemNameByProductTypeId.get(item.productTypeId);
+        const storeName = storeInfo?.name?.trim() ?? '';
+        const useStoreName = storeName !== '' && storeName.toLowerCase() !== (item.Name ?? '').toLowerCase();
+
         return {
-          id: index + 1, // Use array index + 1 as unique ID for React keys
-          productTypeId: item.productTypeId, // Preserve the actual database ID
-          name: item.Name,
-          brand: item.Brand || undefined,
-          variant: item.Variant || undefined,
-          unit: item.Unit || undefined,
+          id: index + 1,
+          productTypeId: item.productTypeId,
+          name: useStoreName ? storeInfo!.name : item.Name,
+          brand: (useStoreName && storeInfo?.brand ? storeInfo.brand : item.Brand) || undefined,
+          variant: (useStoreName && storeInfo?.variant ? storeInfo.variant : item.Variant) || undefined,
+          unit: (useStoreName && storeInfo?.unit ? storeInfo.unit : item.Unit) || undefined,
           quantity: 1,
           checked: isAutoChecked || wasPreviouslyChecked
         };
       });
 
       // Step 4: Fetch items from ITEMS_IN_STORE that don't have a productTypeId
-      // These are "custom" products added by stores that don't match any standard product type
+      // These are "custom" products added by stores that don't match any standard product type.
+      // NOTE: explicit limit to avoid Supabase's default 1000-row truncation.
       const { data: customItems, error: customError } = await supabase
         .from('ITEMS_IN_STORE')
         .select('storeItemId, name, description, brand, unit, category')
         .is('productTypeId', null)
         .not('availability', 'is', null)
-        .gt('availability', 0);
+        .gt('availability', 0)
+        .limit(50000);
 
       if (customError) {
         console.error('Error fetching custom items:', customError);
       }
 
       if (customItems && customItems.length > 0) {
-        console.log(`Found ${customItems.length} custom items without productTypeId`);
-        
         // Remove duplicates based on name, brand, unit combination
         const uniqueCustomItems = customItems.filter((item, index, self) => 
           index === self.findIndex(i => 
@@ -389,8 +387,6 @@ const GroceryList: React.FC = () => {
             i.unit === item.unit
           )
         );
-
-        console.log(`After deduplication: ${uniqueCustomItems.length} unique custom items`);
 
         // Add custom items to the list with negative IDs to distinguish them
         const customFormattedItems: GroceryItem[] = uniqueCustomItems.map((item, index) => ({
@@ -407,24 +403,10 @@ const GroceryList: React.FC = () => {
 
         // Combine standard products with custom items
         formattedItems.push(...customFormattedItems);
-        console.log('Added custom items to grocery list:', customFormattedItems.map(i => i.name));
       }
 
-      console.log('Final formatted items:', formattedItems.map(i => ({ 
-        id: i.id, 
-        productTypeId: i.productTypeId, 
-        name: i.name,
-        checked: i.checked
-      })));
-
       if (autoCheckProductTypeId) {
-        console.log('Auto-checking item with productTypeId:', autoCheckProductTypeId);
-        const checkedItem = formattedItems.find(i => i.productTypeId === autoCheckProductTypeId);
-        if (checkedItem) {
-          console.log('Found and checked item:', checkedItem.name);
-        } else {
-          console.warn('Could not find item with productTypeId:', autoCheckProductTypeId);
-        }
+        // Auto-check is handled by the wasPreviouslyChecked logic above
       }
 
       setGroceryItems(formattedItems);
@@ -432,7 +414,7 @@ const GroceryList: React.FC = () => {
       // Save selections to localStorage
       saveSelections(formattedItems);
     } catch (error) {
-      console.error('Error loading product types:', error);
+      console.error('Error loading grocery list:', error);
       setGroceryItems([]);
     } finally {
       setLoading(false);
@@ -446,20 +428,12 @@ const GroceryList: React.FC = () => {
     };
 
     const loadData = async () => {
-      // Check if navigated from Home with a product to add
       const addProductTypeId = location.state?.addProductTypeId;
       
-      console.log('=== GroceryList useEffect ===');
-      console.log('Location state:', location.state);
-      console.log('addProductTypeId:', addProductTypeId);
-      
       if (addProductTypeId) {
-        console.log('Loading grocery list with auto-check for productTypeId:', addProductTypeId);
         await fetchProductTypes(addProductTypeId);
-        // Clear the state to prevent re-checking on re-renders
         history.replace('/grocery-list', {});
       } else {
-        console.log('Loading grocery list without auto-check');
         await fetchProductTypes();
       }
       
@@ -480,7 +454,7 @@ const GroceryList: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (userError || !userData) return 0;
 
@@ -545,16 +519,11 @@ const GroceryList: React.FC = () => {
   };
 
   const toggleItemCheck = (id: number) => {
-    console.log('Toggling item with id:', id);
     setGroceryItems(prevItems => {
       const newItems = prevItems.map(item =>
         item.id === id ? { ...item, checked: !item.checked, showingDelete: false } : { ...item, showingDelete: false }
       );
-      console.log('Updated items:', newItems.filter(i => i.checked).map(i => ({ id: i.id, name: i.name, checked: i.checked })));
-      
-      // Save selections to localStorage
       saveSelections(newItems);
-      
       return newItems;
     });
   };
@@ -665,16 +634,12 @@ const GroceryList: React.FC = () => {
   };
 
   const handleSearchGrocery = () => {
-    // Get selected items
     const selectedItems = groceryItems.filter(item => item.checked);
     
     if (selectedItems.length === 0) {
-      // Show a simple alert for now - can be improved with toast/modal
       alert('Please select at least one item from your grocery list to search for stores.');
       return;
     }
-    
-    console.log('Searching for stores with selected items:', selectedItems);
     
     // Navigate to grocery store search results with selected items (including quantities)
     history.push('/grocery-store-results', { selectedItems });

@@ -224,7 +224,7 @@ const StoreDashboard: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (!userData) return;
 
@@ -267,21 +267,41 @@ const StoreDashboard: React.FC = () => {
       
       // Calculate date range based on selected dateRange
       let startDate: Date | null = null;
+      let endDate: Date | null = null;
       const now = new Date();
       
       switch (dateRange) {
         case 'week':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(now);
+          endDate.setHours(23, 59, 59, 999);
           break;
         case 'month':
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(now);
+          endDate.setHours(23, 59, 59, 999);
           break;
         case 'year':
           startDate = new Date(now.getFullYear(), 0, 1);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(now);
+          endDate.setHours(23, 59, 59, 999);
           break;
         case 'range':
-          // For custom range, we'll use all-time data for now
-          startDate = null;
+          // For custom range, require both dates; otherwise show no data
+          if (customStartDate && customEndDate) {
+            startDate = new Date(customStartDate);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(customEndDate);
+            endDate.setHours(23, 59, 59, 999);
+          } else {
+            // Not enough dates selected yet — show empty state
+            setDashboardStats({ totalSales: null, totalCustomers: null, totalOrders: null, averageOrderValue: null });
+            setStatsLoading(false);
+            return;
+          }
           break;
       }
 
@@ -294,6 +314,9 @@ const StoreDashboard: React.FC = () => {
 
       if (startDate) {
         ordersQuery = ordersQuery.gte('createdAt', startDate.toISOString());
+      }
+      if (endDate) {
+        ordersQuery = ordersQuery.lte('createdAt', endDate.toISOString());
       }
 
       const { data: orders, error: ordersError } = await ordersQuery;

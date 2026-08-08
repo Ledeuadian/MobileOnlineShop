@@ -68,7 +68,7 @@ const Cart: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (!userData) {
         console.error('User data not found');

@@ -47,7 +47,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
         .from('USER')
         .select('firstname, lastname, contactNumber')
         .eq('email', userEmail)
-        .single();
+        .maybeSingle();
       if (data) {
         if (data.firstname) setFirst(data.firstname);
         if (data.lastname) setLast(data.lastname);

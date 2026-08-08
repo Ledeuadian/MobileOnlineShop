@@ -361,7 +361,7 @@ const CategoryProducts: React.FC = () => {
           .from('USER')
           .select('userId')
           .eq('email', user.email)
-          .single();
+          .maybeSingle();
 
         if (userError || !userData) {
           console.error('Error getting user data:', userError);

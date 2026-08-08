@@ -83,7 +83,7 @@ const Notifications: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (!userData) {
         console.error('User data not found');
@@ -182,7 +182,10 @@ const Notifications: React.FC = () => {
   };
 
   const filteredNotifications = filter === 'clarifications' ? [] : notifications.filter(notif => {
-    if (filter === 'all') return true;
+    if (filter === 'all') {
+      // "Orders" tab should only show active orders — exclude picked_up (completed)
+      return notif.status !== 'picked_up';
+    }
     return notif.status === filter;
   });
 

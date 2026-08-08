@@ -594,28 +594,6 @@ const AdminDashboard: React.FC = () => {
           </IonCard>
         )}
       </div>
-
-      {/* Recent Activity */}
-      <div className="recent-activity">
-        <h3>System Overview</h3>
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>User Registration Status</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <div className="activity-summary">
-              <div className="summary-item">
-                <IonIcon icon={checkmarkCircleOutline} color="success" />
-                <span>Auto-approved ADMIN accounts</span>
-              </div>
-              <div className="summary-item">
-                <IonIcon icon={timeOutline} color="warning" />
-                <span>DTI & Store registrations require approval</span>
-              </div>
-            </div>
-          </IonCardContent>
-        </IonCard>
-      </div>
     </div>
   );
 

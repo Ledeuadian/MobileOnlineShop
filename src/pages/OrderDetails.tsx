@@ -98,7 +98,7 @@ const OrderDetails: React.FC = () => {
         .from('USER')
         .select('firstname, lastname, email')
         .eq('userId', orderData.userId)
-        .single();
+        .maybeSingle();
 
       if (userError) {
         console.error('Error loading user:', userError);

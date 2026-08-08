@@ -43,7 +43,7 @@ const Checkout: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       const publicUserId = userData?.userId;
       if (!publicUserId) return;
@@ -72,7 +72,7 @@ const Checkout: React.FC = () => {
         .from('USER')
         .select('userId')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       const publicUserId = userData?.userId;
       if (!publicUserId) return;
@@ -249,7 +249,7 @@ const Checkout: React.FC = () => {
         .from('USER')
         .select('userId, firstname, lastname, email')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
       if (!userData) {
         alert('Error placing order. Please try again.');
         return;
@@ -308,7 +308,7 @@ const Checkout: React.FC = () => {
             .from('USER')
             .select('userId')
             .eq('auth_user_id', storeData.owner_id)
-            .single();
+            .maybeSingle();
           if (ownerData) {
             await supabase.from('NOTIFICATIONS').insert({
               userId: ownerData.userId,

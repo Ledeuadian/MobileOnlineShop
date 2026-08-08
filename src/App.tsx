@@ -674,7 +674,7 @@ const ProtectedNearbyUsersRoute: React.FC = () => {
           .from('USER')
           .select('userId')
           .eq('email', session.user.email)
-          .single();
+          .maybeSingle();
 
         if (userError || !userData) {
           console.error('Error fetching user data:', userError);
